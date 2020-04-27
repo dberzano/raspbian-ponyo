@@ -1,7 +1,4 @@
 ---
-- name: starthere
-  debug: msg=nope
-
 - name: Assign hostname {{assigned_hostname}}
   hostname: name="{{assigned_hostname}}"
 

@@ -8,3 +8,17 @@
     name:
       - vim-nox
       - avahi-daemon
+      - build-essential
+      - git
+      - autoconf
+      - automake
+      - xmltoman
+      - libtool
+      - libdaemon-dev
+      - libpopt-dev
+      - libconfig-dev
+      - libasound2-dev
+      - libpulse-dev
+      - libavahi-client-dev
+      - libssl-dev
+      - libsoxr-dev

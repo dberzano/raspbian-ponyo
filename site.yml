@@ -1,9 +1,20 @@
 ---
 - hosts: all
   become: yes
+  vars:
+    shairport_sync_ver: 3.3.6
+    # How to figure out the ALSA device?
+    # https://superuser.com/questions/53957/what-do-alsa-devices-like-hw0-0-mean-how-do-i-figure-out-which-to-use
+    # Use `aplay -l` to get the list of devices - for USB, names may change! hw:0,1 means "card 0, device 1"
+    # Use `aplay -L` to get aliases. `plughw` devices have proper software conversions, use them.
+    alsa_airplay:
+      device: plughw:CARD=Device,DEV=0
+      mixer_device: hw:CARD=Device
+      mixer_name: Speaker
   roles:
     - role: packages
     - role: avahi
+    - role: airplay
     # - role: common
     # - role: disks
     # - role: cups
