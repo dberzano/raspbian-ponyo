@@ -1,0 +1,15 @@
+---
+- hosts: all
+  become: yes
+  roles:
+    - role: packages
+    - role: avahi
+    # - role: common
+    # - role: disks
+    # - role: cups
+    # - role: samba
+    # - role: torrent
+    # - role: rproxy
+    # - role: ddns
+    # - role: rsync-to-remote
+    # - role: monitorix

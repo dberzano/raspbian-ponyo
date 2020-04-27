@@ -1,0 +1,10 @@
+---
+- name: Update list of packages
+  apt: cache_valid_time=43200 update_cache=yes
+
+- name: Install base packages
+  apt:
+    state: present
+    name:
+      - vim-nox
+      - avahi-daemon

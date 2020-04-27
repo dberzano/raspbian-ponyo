@@ -1,0 +1,18 @@
+---
+- name: starthere
+  debug: msg=nope
+
+- name: Assign hostname {{assigned_hostname}}
+  hostname: name="{{assigned_hostname}}"
+
+- name: Enable avahi service
+  systemd:
+    name: avahi-daemon
+    enabled: yes
+    state: started
+
+- name: Enable SSH advertisement
+  copy:
+    src: ssh.service
+    dest: /etc/avahi/services/ssh.service
+    mode: 0644
