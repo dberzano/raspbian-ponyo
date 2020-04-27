@@ -1,0 +1,15 @@
+---
+- hosts: all
+  gather_facts: no
+  become: yes
+  tasks:
+    - name: Create SSH directory for user pi
+      become: pi
+      file: state=directory path=/home/pi/.ssh mode=0755
+
+    - name: Install SSH key for user pi
+      become: pi
+      copy: content={{ssh_key.public}} dest=/home/pi/.ssh/authorized_keys mode=0444
+
+    - name: Lock password for user pi
+      user: name=pi password_lock=yes
