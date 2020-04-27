@@ -1,7 +1,4 @@
 ---
-- name: starthere
-  debug: msg=nope
-
 - name: Create cache directory
   file: state=directory path=/var/cache/repos
 
