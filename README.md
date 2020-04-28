@@ -74,7 +74,13 @@ It will ask you for the default `pi` password, which is `raspberry` as said.
 
 After fully running, it will be **impossible** to log back into the Raspberry Pi using the password,
 as it has been disabled. From now on, only SSH access through private key is allowed. `sudo` will
-require no password.
+require no password. The private/public key pair was generated in
+[Ed25519](https://medium.com/risan/upgrade-your-ssh-key-to-ed25519-c6e8d60d3c54) using the following
+command:
+
+```
+ssh-keygen -t ed25519 -a 100 -o -f mykey
+```
 
 If by chance re-running `provision.yml` finishes successfully, it just means that it opened a
 persistent SSH connection in the past which is still active. Remove `~/.ansible` on your provisioner
