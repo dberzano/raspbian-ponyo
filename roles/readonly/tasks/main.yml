@@ -1,0 +1,113 @@
+---
+# Mega big kudos to https://medium.com/swlh/make-your-raspberry-pi-file-system-read-only-raspbian-buster-c558694de79
+
+- name: Remove unnecessary packages
+  apt:
+    state: absent
+    autoremove: yes
+    name:
+      - triggerhappy
+      - logrotate
+      - dphys-swapfile
+
+- name: Add the Busybox in-memory logger
+  apt: state=present name=busybox-syslogd
+
+- name: Remove traditional logger
+  apt: state=absent autoremove=yes purge=yes name=rsyslog
+
+- name: Check for noswap in kernel boot command
+  command:
+    argv:
+      - grep
+      - -q
+      - noswap
+      - --
+      - /boot/cmdline.txt
+  register: grep_noswap_status
+  failed_when: False
+  changed_when: 'grep_noswap_status.rc != 0'
+
+- name: Add noswap to kernel boot command
+  command:
+    argv:
+      - sed
+      - -i
+      - -e
+      - 's/^\(.*\)$/\1 fastboot noswap ro/g'
+      - --
+      - /boot/cmdline.txt
+  when: 'grep_noswap_status.rc != 0'
+  changed_when: True
+
+- name: Check for ro (readonly) option in fstab
+  command:
+    argv:
+      - grep
+      - -q
+      - ",ro"
+      - --
+      - /etc/fstab
+  register: fstab_ro_status
+  failed_when: False
+  changed_when: 'fstab_ro_status.rc != 0'
+
+- name: Change root and boot to read-only without remounting
+  command:
+    argv:
+      - sed
+      - -i
+      - -e
+      - 's/\(\(vfat\|ext4\)\s\+defaults\)/\1,ro/g'
+      - --
+      - /etc/fstab
+  when: 'fstab_ro_status.rc != 0'
+  changed_when: True
+
+- name: Add temp filesystem entries and mount
+  mount:
+    state: mounted
+    src: tmpfs
+    fstype: tmpfs
+    path: "{{item}}"
+    opts: nosuid,nodev
+  loop:
+    - /tmp
+    - /var/log
+    - /var/tmp
+
+- name: Fix mount permissions
+  file: state=directory mode=1777 path="{{item}}"
+  loop:
+    - /tmp
+    - /var/log
+
+- name: Add subdirectory for system tmp stuff
+  file: state=directory mode=1777 path=/tmp/system
+
+- name: Get status of some files that should be symlinks
+  stat: path="{{item}}"
+  loop:
+    - /var/lib/dhcp
+    - /var/lib/dhcpcd5
+    - /var/spool
+    - /etc/resolv.conf
+  register: symlink_status
+
+- name: Remove actual files and dirs that are not symlinks but should be
+  file: state=absent path="{{item.item}}"
+  with_items: "{{symlink_status.results}}"
+  when: item.stat.islnk|default(False) == False
+
+- name: Add symlinks to temporary locations
+  file: state=link src=/tmp/system dest="{{item}}"
+  loop:
+    - /var/lib/dhcp
+    - /var/lib/dhcpcd5
+    - /var/spool
+
+- name: Create dummy resolv.conf
+  copy: content="" dest=/tmp/system/dhcpcd.resolv.conf
+
+- name: Link dummy resolv.conf to expected location
+  file: state=link src=/tmp/system/dhcpcd.resolv.conf dest=/etc/resolv.conf
