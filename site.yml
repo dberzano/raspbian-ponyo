@@ -15,4 +15,5 @@
     - role: packages
     - role: avahi
     - role: airplay
+    - role: notificator
     - role: readonly
