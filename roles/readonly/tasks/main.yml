@@ -75,39 +75,18 @@
     - /tmp
     - /var/log
     - /var/tmp
+    - /var/lib/dhcp
+    - /var/lib/dhcpcd5
+    - /var/spool
 
-- name: Fix mount permissions
+- name: Fix mount permissions on tmp directories
   file: state=directory mode=1777 path="{{item}}"
   loop:
     - /tmp
-    - /var/log
+    - /var/tmp
 
-- name: Add subdirectory for system tmp stuff
-  file: state=directory mode=1777 path=/tmp/system
+- name: Create dummy resolv.conf under /tmp
+  copy: content="" dest=/tmp/dhcpcd.resolv.conf
 
-- name: Get status of some files that should be symlinks
-  stat: path="{{item}}"
-  loop:
-    - /var/lib/dhcp
-    - /var/lib/dhcpcd5
-    - /var/spool
-    - /etc/resolv.conf
-  register: symlink_status
-
-- name: Remove actual files and dirs that are not symlinks but should be
-  file: state=absent path="{{item.item}}"
-  with_items: "{{symlink_status.results}}"
-  when: item.stat.islnk|default(False) == False
-
-- name: Add symlinks to temporary locations
-  file: state=link src=/tmp/system dest="{{item}}"
-  loop:
-    - /var/lib/dhcp
-    - /var/lib/dhcpcd5
-    - /var/spool
-
-- name: Create dummy resolv.conf
-  copy: content="" dest=/tmp/system/dhcpcd.resolv.conf
-
-- name: Link dummy resolv.conf to expected location
-  file: state=link src=/tmp/system/dhcpcd.resolv.conf dest=/etc/resolv.conf
+- name: Link dummy resolv.conf to the expected location
+  file: state=link src=/tmp/dhcpcd.resolv.conf dest=/etc/resolv.conf
