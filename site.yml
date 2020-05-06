@@ -17,5 +17,6 @@
     - role: ipv6
     - role: avahi
     - role: airplay
+    - role: bluealsa
     - role: notificator
     - role: readonly
