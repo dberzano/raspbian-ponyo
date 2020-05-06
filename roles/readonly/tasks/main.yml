@@ -85,8 +85,12 @@
     - /tmp
     - /var/tmp
 
-- name: Create dummy resolv.conf under /tmp
-  copy: content="" dest=/tmp/dhcpcd.resolv.conf
+# Why under /var/lib/dhcp and not /tmp or /var/tmp? Because of the ProtectSystem and PrivateTmp
+# sandboxing options of systemd. They may expose the symlink but not the symlink destination into
+# some daemon's chrooted environment. /var/lib/dhcp is on tmpfs as per our configuration, and it's
+# always exposed as it's not a "temporary" directory
+- name: Create dummy resolv.conf under /var/lib/dhcp
+  copy: content="" dest=/var/lib/dhcp/resolv.conf
 
 - name: Link dummy resolv.conf to the expected location
-  file: state=link src=/tmp/dhcpcd.resolv.conf dest=/etc/resolv.conf
+  file: state=link src=/var/lib/dhcp/resolv.conf dest=/etc/resolv.conf

@@ -13,6 +13,8 @@
       mixer_name: Speaker
   roles:
     - role: packages
+    - role: timesync
+    - role: ipv6
     - role: avahi
     - role: airplay
     - role: notificator

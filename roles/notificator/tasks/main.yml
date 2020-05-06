@@ -1,7 +1,4 @@
 ---
-- name: starthere
-  debug: msg={{telegram}}
-
 - name: Add utility to notify through a Telegram channel
   template: src=notificator.py.j2 dest=/usr/lib/python3/dist-packages/notificator.py mode=0711
 

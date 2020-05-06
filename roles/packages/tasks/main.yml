@@ -22,3 +22,6 @@
       - libavahi-client-dev
       - libssl-dev
       - libsoxr-dev
+      - bluealsa
+      - python-dbus
+      - chrony
