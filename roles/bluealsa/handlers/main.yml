@@ -1,0 +1,15 @@
+---
+- name: Reload systemd
+  systemd: daemon_reload=yes
+
+- name: Restart bluetooth
+  systemd: name=bluetooth state=restarted
+
+- name: Restart bluealsa
+  systemd: name=bluealsa state=restarted
+
+- name: Restart bt-agent-a2dp
+  systemd: name=bt-agent-a2dp state=restarted
+
+- name: Restart a2dp-playback
+  systemd: name=a2dp-playback state=restarted
