@@ -4,7 +4,7 @@ After=bluealsa.service syslog.service
 Requires=bluealsa.service
 
 [Service]
-ExecStartPre=/bin/sleep 10
+ExecStartPre=/bin/sh -c '/bin/sleep 10; amixer -D {{alsa_airplay.mixer_device}} set {{alsa_airplay.mixer_name}} {{alsa_airplay.mixer_volume_pct}}%'
 ExecStart=/usr/bin/bluealsa-aplay --profile-a2dp 00:00:00:00:00:00 -d {{alsa_airplay.device}}
 StandardOutput=syslog
 StandardError=syslog

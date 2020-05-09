@@ -11,6 +11,7 @@
       device: plughw:CARD=Device,DEV=0
       mixer_device: hw:CARD=Device
       mixer_name: Speaker
+      mixer_volume_pct: 100
   roles:
     - role: packages
     - role: timesync
