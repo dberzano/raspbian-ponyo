@@ -19,5 +19,5 @@
     - role: avahi
     - role: airplay
     - role: bluealsa
-    - role: notificator
+    - role: utils
     - role: readonly

@@ -1,0 +1,20 @@
+---
+- name: Add utility to notify through a Telegram channel
+  copy: src=notificator.py dest=/usr/lib/python3/dist-packages/notificator.py mode=0755
+
+- name: Add configuration for the Telegram notificator
+  template: src=notificator.json.j2 dest=/usr/lib/python3/dist-packages/notificator.json mode=0600
+
+- name: Add internet status utility
+  copy: src=internetstatus.py dest=/usr/lib/python3/dist-packages/internetstatus.py mode=0755
+
+- name: Run Internet status utility automatically
+  cron:
+    name: Check and report Internet status
+    minute: "*/20"
+    job: "/usr/lib/python3/dist-packages/internetstatus.py > /dev/null 2> /dev/null || true"
+    cron_file: "/etc/cron.d/internetstatus"
+    user: root
+
+- name: Make it possible to invoke the utility from the command line
+  file: state=link src=/usr/lib/python3/dist-packages/notificator.py dest=/usr/local/bin/notificator
