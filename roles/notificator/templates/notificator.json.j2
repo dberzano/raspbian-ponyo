@@ -1,0 +1,7 @@
+{
+{% for k, v in telegram.items() %}
+    "{{k}}": { "token": "{{v ['token']}}", "chat_id": {{v['chat_id']}} }{% if not loop.last %},
+{% endif %}
+{% endfor %}
+
+}

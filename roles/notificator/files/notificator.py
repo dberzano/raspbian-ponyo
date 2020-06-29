@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
+import json
 import sys
+from pathlib import Path
 from requests import get
 from requests.exceptions import RequestException
 
-configurations = {
-{% for k, v in telegram.items() %}
-    "{{k}}": ("{{v ['token']}}", {{v['chat_id']}}),
-{% endfor -%}
-}
+
+def read_configuration():
+    cfg_fn = Path(__file__).resolve().parent / "notificator.json"
+    with open(cfg_fn) as fp:
+        configurations = json.load(fp)
+    return configurations
 
 
 def sendmsg(msg, config="default"):
+    configurations = read_configuration()
     try:
-        token, chat_id = configurations[config]
+        token = configurations[config]["token"]
+        chat_id = configurations[config]["chat_id"]
     except KeyError:
         fatal(f"configuration {config} not found, try {', '.join(configurations.keys())}")
 
@@ -24,7 +29,7 @@ def sendmsg(msg, config="default"):
                     "text": msg})
         r.raise_for_status()
     except RequestException as e:
-        fatal("cannot send message: {e}")
+        fatal(f"cannot send message: {e}")
 
 
 if __name__ == "__main__":
