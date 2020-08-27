@@ -3,7 +3,7 @@ much fun
 Configure Raspbian with Ansible
 ===============================
 
-Ansible configuration for my Raspberry Pi Zero W.
+Ansible configuration for my Raspberry Pi Zero W. Blah.
 
 
 Install the OS
