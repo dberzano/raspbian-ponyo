@@ -1,12 +1,16 @@
 ---
-- name: Add utility to notify through a Telegram channel
-  copy: src=notificator.py dest=/usr/lib/python3/dist-packages/notificator.py mode=0755
+- name: Add Python utilities
+  copy: src={{item}}.py dest=/usr/lib/python3/dist-packages/{{item}}.py mode=0755
+  loop:
+    - notificator
+    - internetstatus
+    - lightlog
 
 - name: Add configuration for the Telegram notificator
   template: src=notificator.json.j2 dest=/usr/lib/python3/dist-packages/notificator.json mode=0600
 
-- name: Add internet status utility
-  copy: src=internetstatus.py dest=/usr/lib/python3/dist-packages/internetstatus.py mode=0755
+- name: Add helper script for lightlog
+  template: src=lightlog_transfer.sh.j2 dest=/usr/lib/python3/dist-packages/lightlog_transfer.sh mode=0700
 
 - name: Run Internet status utility automatically
   cron:
