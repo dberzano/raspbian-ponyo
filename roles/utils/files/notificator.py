@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+
 import json
-import sys
 from pathlib import Path
+import sys
+
 from requests import get
 from requests.exceptions import RequestException
 
@@ -24,9 +26,9 @@ def sendmsg(msg, config="default"):
     try:
         r = get(f"https://api.telegram.org/bot{token}/sendMessage",
                 data={"chat_id": chat_id,
-                    "parse_mode": "Markdown",
-                    "disable_web_page_preview": True,
-                    "text": msg})
+                      "parse_mode": "Markdown",
+                      "disable_web_page_preview": True,
+                      "text": msg})
         r.raise_for_status()
     except RequestException as e:
         fatal(f"cannot send message: {e}")

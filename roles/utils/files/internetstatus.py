@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-from notificator import sendmsg
+
 from random import choice
-from requests import get, RequestException
 import sys
 from time import sleep
+
+from notificator import sendmsg
+from requests import get, RequestException
+
 
 def main():
     domain = choice([
@@ -23,7 +26,7 @@ def main():
         try:
             get(f"https://{domain}", timeout=timeout_s)
             success += 1
-        except RequestException as e:
+        except RequestException:
             pass
         print(f"testing `{domain}`: attempt {i} - success {success} ({100*success/attempts}%) "
               f"- remaining {attempts-i}")
@@ -36,6 +39,7 @@ def main():
     sendmsg(msg, "internet_status")
 
     return int(success != attempts)
+
 
 if __name__ == "__main__":
     sys.exit(main())
