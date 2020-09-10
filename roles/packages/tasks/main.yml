@@ -6,22 +6,23 @@
   apt:
     state: present
     name:
-      - vim-nox
-      - avahi-daemon
-      - build-essential
-      - git
       - autoconf
       - automake
-      - xmltoman
-      - libtool
+      - avahi-daemon
+      - bluealsa
+      - build-essential
+      - chrony
+      - git
+      - libasound2-dev
+      - libavahi-client-dev
+      - libconfig-dev
       - libdaemon-dev
       - libpopt-dev
-      - libconfig-dev
-      - libasound2-dev
       - libpulse-dev
-      - libavahi-client-dev
-      - libssl-dev
       - libsoxr-dev
-      - bluealsa
+      - libssl-dev
+      - libtool
       - python-dbus
-      - chrony
+      - python3-klein
+      - vim-nox
+      - xmltoman
