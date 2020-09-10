@@ -131,16 +131,16 @@ def run_helper_cmd(cmd_template):
     )
     out = popen.communicate()[0]
     log.msg(f"command returned {popen.returncode}")
-    if popen.returncode != 0:
-        for line in out.decode("utf-8").split("\n"):
-            log.msg(f"error {popen.returncode}: {line}")
+    error_or_not = "ok" if popen.returncode == 0 else f"error {popen.returncode}"
+    for line in out.decode("utf-8").split("\n"):
+        log.msg(f"{error_or_not}: {line}")
     return popen.returncode
 
 
 @inlineCallbacks
 def startup_cmd_and_schedule(every):
     log.msg("executing initial fetch data command")
-    rv = yield threads.deferToThread(run_helper_cmd, before_start_cmd)
+    yield threads.deferToThread(run_helper_cmd, before_start_cmd)
     log.msg(f"scheduling dump every {every}s")
     dump_task = task.LoopingCall(dump_buf)
     dump_task.start(every)

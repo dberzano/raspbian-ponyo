@@ -4,13 +4,25 @@
   loop:
     - notificator
     - internetstatus
-    - lightlog
+
+- name: Add lightlog
+  copy: src=lightlog.py dest=/usr/lib/python3/dist-packages/lightlog.py mode=0755
+  notify:
+    - Restart lightlog service
 
 - name: Add configuration for the Telegram notificator
   template: src=notificator.json.j2 dest=/usr/lib/python3/dist-packages/notificator.json mode=0600
 
 - name: Add helper script for lightlog
   template: src=lightlog_transfer.sh.j2 dest=/usr/lib/python3/dist-packages/lightlog_transfer.sh mode=0700
+  notify:
+    - Restart lightlog service
+
+- name: Make it possible to invoke some utilities from the command line
+  file: state=link src=/usr/lib/python3/dist-packages/{{item}}.py dest=/usr/local/bin/{{item}}
+  loop:
+    - notificator
+    - lightlog
 
 - name: Run Internet status utility automatically
   cron:
@@ -20,5 +32,16 @@
     cron_file: "/etc/cron.d/internetstatus"
     user: root
 
-- name: Make it possible to invoke the utility from the command line
-  file: state=link src=/usr/lib/python3/dist-packages/notificator.py dest=/usr/local/bin/notificator
+- name: Install lightlog service
+  copy: src=lightlog.service dest=/etc/systemd/system/lightlog.service mode=0644
+  notify:
+    - Reload systemd
+    - Restart lightlog service
+
+- name: Enable and start lightlog service
+  systemd:
+    name: lightlog
+    state: started
+    enabled: yes
+
+- meta: flush_handlers
