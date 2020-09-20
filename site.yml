@@ -20,4 +20,5 @@
     - role: airplay
     - role: bluealsa
     - role: utils
+    - role: raspotify
     - role: readonly

@@ -2,6 +2,23 @@
 - name: Update list of packages
   apt: cache_valid_time=43200 update_cache=yes
 
+- name: Install apt preliminary requirements
+  apt:
+    state: present
+    name:
+      - apt-transport-https
+      - curl
+
+- name: Add and verify apt key for Raspotify
+  apt_key:
+    id: 2CC9B80F5AE2B7ACEFF2BA3209146F2F7953A455
+    url: https://dtcooper.github.io/raspotify/key.asc
+
+- name: Add Raspotify apt repository
+  apt_repository:
+    repo: deb https://dtcooper.github.io/raspotify raspotify main
+    update_cache: true
+
 - name: Install base packages
   apt:
     state: present
@@ -24,5 +41,6 @@
       - libtool
       - python-dbus
       - python3-klein
+      - raspotify
       - vim-nox
       - xmltoman

@@ -1,0 +1,10 @@
+---
+- name: Enable and start raspotify
+  systemd:
+    name: raspotify.service
+    state: started
+    enabled: yes
+
+- name: Configure raspotify
+  template: src=raspotify.conf.j2 dest=/etc/default/raspotify mode=0644
+  notify: Restart raspotify

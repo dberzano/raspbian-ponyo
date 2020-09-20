@@ -10,7 +10,7 @@
   register: shairport_git_status
 
 - name: Sync shairport-sync to build dir
-  command: 
+  command:
     argv:
       - rsync
       - "-a"
