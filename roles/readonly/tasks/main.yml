@@ -78,6 +78,7 @@
     - /var/lib/dhcp
     - /var/lib/dhcpcd5
     - /var/spool
+    - /var/cache
 
 - name: Fix mount permissions on tmp directories
   file: state=directory mode=1777 path="{{item}}"
