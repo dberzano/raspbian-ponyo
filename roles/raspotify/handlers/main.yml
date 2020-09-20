@@ -1,0 +1,3 @@
+---
+- name: Restart raspotify
+  systemd: name=raspotify.service state=restarted
