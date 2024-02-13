@@ -36,4 +36,14 @@
   tags:
   - gists
 
+- name: Create a second file
+  copy:
+    dest: /tmp/dummy2  # specify the path where you want to create the file
+    mode: '0644'
+    content: "dummy2"
+    owner: pi
+    group: pi
+  tags:
+  - gists
+
 - meta: flush_handlers
