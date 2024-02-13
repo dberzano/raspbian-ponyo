@@ -98,5 +98,26 @@ Note that this assumes your provisioner's SSH client has been configured properl
 Just run (given you have assigned the SSH nickname `ponyo` to your Raspberry Pi):
 
 ```
-ansible-playbook site.yml -i ponyo,
+ansible-playbook site.yml --skip-tags gists -i ponyo,
 ```
+
+
+Common issues
+-------------
+
+### Error in apt-get update
+
+Errors in the form:
+
+```text
+E: Repository 'http://archive.raspberrypi.org/debian buster InRelease' changed its 'Suite' value from 'testing' to 'oldoldstable'
+N: This must be accepted explicitly before updates for this repository can be applied. See apt-secure(8) manpage for details.
+```
+
+are solved by manually running:
+
+```sh
+apt-get --allow-releaseinfo-change update
+```
+
+and then running Ansible as usual.

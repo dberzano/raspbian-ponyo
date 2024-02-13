@@ -22,3 +22,4 @@
     - role: utils
     - role: raspotify
     - role: readonly
+    - role: gists

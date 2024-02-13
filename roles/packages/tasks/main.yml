@@ -44,3 +44,6 @@
       - raspotify
       - vim-nox
       - xmltoman
+      - ansible
+  tags:
+  - only
