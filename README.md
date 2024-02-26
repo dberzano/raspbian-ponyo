@@ -1,55 +1,24 @@
-Configure Raspbian with Ansible
+Configure Orange Pi with Ansible
 ===============================
 
-Ansible configuration for my Raspberry Pi Zero W.
+We are using [this](https://github.com/Joshua-Riek/ubuntu-rockchip?tab=readme-ov-file) as a
+reference, with the Ubuntu Server image from
+[this page](https://joshua-riek.github.io/ubuntu-rockchip-download/boards/orangepi-3b.html). Image
+is downloaded, verified, uncompressed and dumped on the SD card with a simple `dd` command.
 
 
-Install the OS
---------------
-Use the [Raspberry Pi Imager](https://www.raspberrypi.org/downloads/) that does the job for you.
-Select the "Lite" version of the operating system.
+Manual login
+------------
+You can connect your Orange Pi with your Mac using Connection Sharing, and then boot it. It will get
+an IP address from the Ethernet card in the range 192.168.2.0/24 in most cases (find it with the aid
+of the Console).
 
-
-Headless setup
---------------
-The setup is completely headless. This means we need to enable SSH and the Wi-Fi configuration
-somehow. [Here](https://desertbot.io/blog/headless-raspberry-pi-3-bplus-ssh-wifi-setup) you can find
-some helpful resources.
-
-To enable SSH, create an empty `/ssh` in the SD card. To enable Wi-Fi, create a file named
-`/wpa_supplicant.conf` with the following configuration:
-
-```
-country=FR
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-
-network={
-    scan_ssid=1
-    ssid="Name Of Your Wi-Fi Network"
-    psk="Your Wi-Fi Password"
-}
+```sh
+ssh ubuntu@192.168.2.2
 ```
 
-Note that the value `scan_ssid=1` is essential if your Wi-Fi network does not broadcast its SSID
-(_i.e._ it's a "hidden" network). This is normally the case in a dual 5 GHz/2.4 GHz setup to prevent
-high-speed devices to connect to the 2.4 GHz network. The Raspberry Pi Zero W only has a 2.4 GHz
-capable Wi-Fi chipset.
-
-It is important to take note of the MAC address of your board. If your router allows it, pin it to
-a certain IP address so that it's easier to access.
-
-Test the setup with:
-
-```
-ssh pi@192.168.0.50
-```
-
-The default password is `raspberry` and the `pi` account is sudo-enabled. A prompt will greet you
-advising to change your default password.
-
-From now on, the setup is completely done through Ansible. This also means that the setup is fully
-reproducible.
+The default password is `ubuntu` and you are prompted to change it at the first login. Root user is
+disabled for logins, but you can use `sudo`.
 
 
 First run
@@ -66,13 +35,13 @@ brew install https://raw.githubusercontent.com/kadwanev/bigboybrew/master/Librar
 
 Now run the first-time Ansible setup:
 
-```
-ansible-playbook provision.yml -i 192.168.0.50, -k
+```sh
+ansible-playbook provision.yml -i 192.168.2.2, -k
 ```
 
-It will ask you for the default `pi` password, which is `raspberry` as said.
+It will ask you for the default `ubuntu` password, which is `ubuntu` as said.
 
-After fully running, it will be **impossible** to log back into the Raspberry Pi using the password,
+After fully running, it will be **impossible** to log back into the Orange Pi 3B using the password,
 as it has been disabled. From now on, only SSH access through private key is allowed. `sudo` will
 require no password. The private/public key pair was generated in
 [Ed25519](https://medium.com/risan/upgrade-your-ssh-key-to-ed25519-c6e8d60d3c54) using the following
