@@ -1,5 +1,5 @@
 Configure Orange Pi with Ansible
-===============================
+================================
 
 We are using [this](https://github.com/Joshua-Riek/ubuntu-rockchip?tab=readme-ov-file) as a
 reference, with the Ubuntu Server image from
@@ -64,29 +64,8 @@ Ordinary runs
 
 Note that this assumes your provisioner's SSH client has been configured properly.
 
-Just run (given you have assigned the SSH nickname `ponyo` to your Raspberry Pi):
-
-```
-ansible-playbook site.yml --skip-tags gists -i ponyo,
-```
-
-
-Common issues
--------------
-
-### Error in apt-get update
-
-Errors in the form:
-
-```text
-E: Repository 'http://archive.raspberrypi.org/debian buster InRelease' changed its 'Suite' value from 'testing' to 'oldoldstable'
-N: This must be accepted explicitly before updates for this repository can be applied. See apt-secure(8) manpage for details.
-```
-
-are solved by manually running:
+Just run (given you have assigned the SSH nickname `svizzerino` to your Orange Pi 3B):
 
 ```sh
-apt-get --allow-releaseinfo-change update
+ansible-playbook site.yml -i svizzerino,
 ```
-
-and then running Ansible as usual.

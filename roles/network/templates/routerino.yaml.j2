@@ -1,0 +1,25 @@
+# This is routerino.yaml
+
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    # Physical Ethernet is configured with static IP
+    {{ network.ethernet.device }}:
+      dhcp4: false
+      dhcp6: false
+      optional: true
+      link-local: []
+      addresses:
+      - {{ network.ethernet.address }}
+  wifis:
+    # Wireless network configuration connects to one of the configured networks
+    {{ network.wifi.device }}:
+      dhcp4: true
+      dhcp6: false
+      optional: true
+      access-points:
+{% for wifientry in wifi_passwords %}
+        "{{ wifientry.ssid }}":
+          password: "{{ wifientry.password }}"
+{% endfor %}

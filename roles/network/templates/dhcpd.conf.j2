@@ -1,0 +1,10 @@
+default-lease-time 600;
+max-lease-time 7200;
+ddns-update-style none;
+authoritative;
+
+subnet {{ network.ethernet.dhcp.subnet }} netmask {{ network.ethernet.dhcp.mask }} {
+    range {{ network.ethernet.dhcp.range.low }} {{ network.ethernet.dhcp.range.high }};
+    option routers {{ network.ethernet.address.split('/')|first }};
+    option domain-name-servers {{ network.ethernet.dhcp.range.dns|join(',') }};
+}

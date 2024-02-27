@@ -1,0 +1,26 @@
+---
+- name: Assign hostname
+  hostname: name="{{ assigned_hostname }}"
+
+- name: Add netplan configuration
+  template: src=routerino.yaml.j2 dest=/etc/netplan/routerino.yaml mode=0600
+  notify:
+    - Apply netplan configuration
+
+- name: Create DHCP server override directory
+  file: path=/etc/systemd/system/isc-dhcp-server.service.d state=directory mode=0755
+
+- name: Add DHCP server configuration
+  template: src=dhcpd.conf.j2 dest=/etc/dhcp/dhcpd.conf mode=0644
+  notify:
+    - Restart DHCP server
+
+- name: Tell DHCP server to restart continuously
+  copy: src=isc-dhcp-server-override.conf dest=/etc/systemd/system/isc-dhcp-server.service.d/override.conf
+  notify:
+    - Restart DHCP server
+
+- name: Add vpnbox script
+  template: src=vpnbox.sh.j2 dest=/usr/local/sbin/vpnbox mode=0700
+
+- meta: flush_handlers

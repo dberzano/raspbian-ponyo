@@ -1,3 +1,0 @@
----
-- name: Restart lightlog service
-  systemd: name=lightlog state=restarted

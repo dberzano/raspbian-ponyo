@@ -1,44 +1,76 @@
 ---
-# Mega big kudos to https://medium.com/swlh/make-your-raspberry-pi-file-system-read-only-raspbian-buster-c558694de79
+- name: Check if swapfile is enabled
+  command:
+    argv:
+      - grep
+      - -q
+      - /swapfile
+      - --
+      - /proc/swaps
+  register: grep_swapfile_status
+  failed_when: False
+  changed_when: "grep_swapfile_status.rc == 0"
 
-- name: Remove unnecessary packages
-  apt:
-    state: absent
-    autoremove: yes
-    name:
-      - triggerhappy
-      - logrotate
-      - dphys-swapfile
+- name: Disable swap
+  command:
+    argv:
+      - "swapoff"
+      - "--all"
+  when: "grep_swapfile_status.rc == 0"
+  changed_when: True
+
+- name: Mask systemd unit generating swapfile
+  systemd: name=swapfile.swap state=stopped masked=yes daemon_reload=yes
+
+# Note: Ubuntu 22.04 keeps recreating it?!?!
+- name: Remove swapfile
+  file: state=absent path=/swapfile
 
 - name: Add the Busybox in-memory logger
   apt: state=present name=busybox-syslogd
 
 - name: Remove traditional logger
   apt: state=absent autoremove=yes purge=yes name=rsyslog
+# Mega big kudos to https://medium.com/swlh/make-your-raspberry-pi-file-system-read-only-raspbian-buster-c558694de79
 
-- name: Check for noswap in kernel boot command
-  command:
-    argv:
-      - grep
-      - -q
-      - noswap
-      - --
-      - /boot/cmdline.txt
-  register: grep_noswap_status
-  failed_when: False
-  changed_when: 'grep_noswap_status.rc != 0'
+# - name: Remove unnecessary packages
+#   apt:
+#     state: absent
+#     autoremove: yes
+#     name:
+#       - triggerhappy
+#       - logrotate
+#       - dphys-swapfile
 
-- name: Add noswap to kernel boot command
-  command:
-    argv:
-      - sed
-      - -i
-      - -e
-      - 's/^\(.*\)$/\1 fastboot noswap ro/g'
-      - --
-      - /boot/cmdline.txt
-  when: 'grep_noswap_status.rc != 0'
-  changed_when: True
+# - name: Add the Busybox in-memory logger
+#   apt: state=present name=busybox-syslogd
+
+# - name: Remove traditional logger
+#   apt: state=absent autoremove=yes purge=yes name=rsyslog
+
+# - name: Check for noswap in kernel boot command
+#   command:
+#     argv:
+#       - grep
+#       - -q
+#       - noswap
+#       - --
+#       - /boot/cmdline.txt
+#   register: grep_noswap_status
+#   failed_when: False
+#   changed_when: 'grep_noswap_status.rc != 0'
+
+# - name: Add noswap to kernel boot command
+#   command:
+#     argv:
+#       - sed
+#       - -i
+#       - -e
+#       - 's/^\(.*\)$/\1 fastboot noswap ro/g'
+#       - --
+#       - /boot/cmdline.txt
+#   when: 'grep_noswap_status.rc != 0'
+#   changed_when: True
 
 - name: Check for ro (readonly) option in fstab
   command:
@@ -50,7 +82,7 @@
       - /etc/fstab
   register: fstab_ro_status
   failed_when: False
-  changed_when: 'fstab_ro_status.rc != 0'
+  changed_when: "fstab_ro_status.rc != 0"
 
 - name: Change root and boot to read-only without remounting
   command:
@@ -58,10 +90,10 @@
       - sed
       - -i
       - -e
-      - 's/\(\(vfat\|ext4\)\s\+defaults\)/\1,ro/g'
+      - 's/\(\(ext4\)\s\+defaults\)/\1,ro/g'
       - --
       - /etc/fstab
-  when: 'fstab_ro_status.rc != 0'
+  when: "fstab_ro_status.rc != 0"
   changed_when: True
 
 - name: Add temp filesystem entries and mount
@@ -76,7 +108,6 @@
     - /var/log
     - /var/tmp
     - /var/lib/dhcp
-    - /var/lib/dhcpcd5
     - /var/spool
     - /var/cache
 
@@ -85,13 +116,3 @@
   loop:
     - /tmp
     - /var/tmp
-
-# Why under /var/lib/dhcp and not /tmp or /var/tmp? Because of the ProtectSystem and PrivateTmp
-# sandboxing options of systemd. They may expose the symlink but not the symlink destination into
-# some daemon's chrooted environment. /var/lib/dhcp is on tmpfs as per our configuration, and it's
-# always exposed as it's not a "temporary" directory
-- name: Create dummy resolv.conf under /var/lib/dhcp
-  copy: content="" dest=/var/lib/dhcp/resolv.conf
-
-- name: Link dummy resolv.conf to the expected location
-  file: state=link src=/var/lib/dhcp/resolv.conf dest=/etc/resolv.conf

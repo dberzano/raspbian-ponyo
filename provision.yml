@@ -11,5 +11,5 @@
     become_user: ubuntu
     copy: content={{ssh_key.public}} dest=/home/ubuntu/.ssh/authorized_keys mode=0444
 
-    # - name: Lock password for user pi
-    #   user: name=pi password_lock=yes
+  - name: Lock password for user ubuntu
+    user: name=ubuntu password_lock=yes
