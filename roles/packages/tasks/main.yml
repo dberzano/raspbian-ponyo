@@ -12,3 +12,28 @@
       - speedometer
       - jq
       - screen
+      # for darkstat
+      - libpcap-dev
+      - zlib1g-dev
+      - autoconf
+
+- name: Check if darkstat is installed
+  stat: path=/usr/local/sbin/darkstat
+  register: stat_darkstat
+
+- name: Install darkstat
+  when: not stat_darkstat.stat.exists
+  raw: |
+    cd / &&
+    curl -L -o /tmp/darkstat.tar.gz https://github.com/emikulic/darkstat/archive/refs/tags/3.0.721.tar.gz &&
+    rm -rf /tmp/darkstat &&
+    mkdir /tmp/darkstat &&
+    cd /tmp/darkstat &&
+    tar xzf /tmp/darkstat.tar.gz &&
+    cd darkstat* &&
+    autoreconf -ivf &&
+    ./configure --prefix=/usr/local &&
+    make &&
+    make install &&
+    cd / &&
+    rm -rf /tmp/darkstat /tmp/darkstat.tar.gz
