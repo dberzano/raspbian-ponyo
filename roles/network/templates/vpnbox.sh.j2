@@ -20,6 +20,7 @@ OVPN_CONFIG_PREFIX=$(mktemp -d)
 OVPN_CONFIG_FILE="${OVPN_CONFIG_PREFIX}"/protonvpn.ovpn
 OVPN_USER_PASS_FILE="${OVPN_CONFIG_PREFIX}"/user_pass.txt
 OVPN_PIDFILE=/var/run/openvpn_protonvpn.pid
+OVPN_DARKSTAT_PIDFILE=/var/run/darkstat.pid
 TARGET_COUNTRY_CODE=CH
 
 function _ovpn_disconnect() {
@@ -48,7 +49,7 @@ function _ovpn_disconnect() {
 
 function _ovpn_extract_config() {
     # Extract configuration to a file (split the string below or else it will grep itself)
-    touch "$OVPN_CONFIG_FILE" "$OVPN_USER_PASS_FILE" 
+    touch "$OVPN_CONFIG_FILE" "$OVPN_USER_PASS_FILE"
     chmod u=rX,g=,o= -R "$OVPN_CONFIG_PREFIX"
     cat "$0" | grep -A 999 '# === CONFIGU''RATION === #' > "$OVPN_CONFIG_FILE"
     printf "${OVPN_USER}\n${OVPN_PASS}\n" > "$OVPN_USER_PASS_FILE"
@@ -81,6 +82,19 @@ function _ovpn_get_cc() {
         echo "You can use to debug: screen -rd $SCREEN_NAME"
         exit 1
     fi
+}
+
+function _ovpn_darkstat() {
+    echo "Terminating current Darkstat instances..."
+    local DARKPID
+    DARKPID=$(cat $OVPN_DARKSTAT_PIDFILE 2> /dev/null || true)
+    kill -15 "$DARKPID" &> /dev/null || true
+    sleep 1
+    kill -9 "$DARKPID" &> /dev/null || true
+    echo "Starting Darkstat..."
+    rm -f "$OVPN_DARKSTAT_PIDFILE"
+    darkstat -i $IFACE_EXT --pidfile "$OVPN_DARKSTAT_PIDFILE" -p 80
+    echo "You can connect to Darkstat using port 80 via http"
 }
 
 function _ovpn_system_config() {
@@ -137,7 +151,8 @@ What do you want to do?
 3. Connection info
 4. Speedometer
 5. Speedtest
-6. DHCP Server info
+6  Darkstat
+7. DHCP Server info
 
 8. Reboot!
 9. Power off!
@@ -156,17 +171,17 @@ EoF
           _ovpn_system_config
           _ovpn_info
       ;;
-    
+
       2)
           # Disconnect from the VPN
           _ovpn_disconnect
       ;;
-    
+
       3)
           _ovpn_get_cc
           _ovpn_info
       ;;
-    
+
       4)
           _ovpn_speedometer
       ;;
@@ -176,6 +191,10 @@ EoF
       ;;
 
       6)
+          _ovpn_darkstat
+      ;;
+
+      7)
           _ovpn_dhcp
       ;;
 
@@ -188,11 +207,11 @@ EoF
           _ovpn_disconnect
 	  poweroff
       ;;
-    
+
       0)
           exit 0
       ;;
-    
+
       *)
           echo "Incorrect choice"
       ;;
