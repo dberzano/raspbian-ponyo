@@ -6,6 +6,8 @@
   template: src=routerino.yaml.j2 dest=/etc/netplan/routerino.yaml mode=0600
   notify:
     - Apply netplan configuration
+  tags:
+    - wifi
 
 - name: Create DHCP server override directory
   file: path=/etc/systemd/system/isc-dhcp-server.service.d state=directory mode=0755
