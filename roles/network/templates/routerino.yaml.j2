@@ -20,6 +20,10 @@ network:
       optional: true
       access-points:
 {% for wifientry in wifi_passwords %}
+{% if wifientry.password != "" %}
         "{{ wifientry.ssid }}":
           password: "{{ wifientry.password }}"
+{% else %}
+        "{{ wifientry.ssid }}": {}
+{% endif %}
 {% endfor %}

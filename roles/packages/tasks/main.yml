@@ -16,6 +16,8 @@
       - libpcap-dev
       - zlib1g-dev
       - autoconf
+      # for captive portals
+      - lynx
 
 - name: Check if darkstat is installed
   stat: path=/usr/local/sbin/darkstat
