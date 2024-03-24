@@ -41,9 +41,16 @@
       - libtool
       - python-dbus
       - python3-klein
+      - python3-requests
       - raspotify
       - vim-nox
       - xmltoman
       - ansible
-  tags:
-  - only
+      - ffmpeg # for telewalkie
+
+- name: Install telewalkie from GitHub
+  get_url:
+    url: https://raw.githubusercontent.com/dberzano/telegram-telewalkie/master/telewalkie
+    dest: /usr/local/bin/telewalkie
+    mode: "u=rwx,g=rx,o=rx"
+    force: true
