@@ -23,6 +23,10 @@
     - Restart DHCP server
 
 - name: Add vpnbox script
-  template: src=vpnbox.sh.j2 dest=/usr/local/sbin/vpnbox mode=0700
+  template:
+    src: vpnbox.sh.j2
+    dest: /usr/local/sbin/vpnbox-{{item.key}}
+    mode: "0700"
+  loop: "{{ vpn | dict2items }}"
 
 - meta: flush_handlers

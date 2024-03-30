@@ -2,6 +2,8 @@
 
 # Configure this computer as a VPN Box based on Proton VPN.
 
+# This configuration has been automatically generated for country: {{item.key}}
+
 # On Ubuntu 22.04, it requires the following packages:
 #     openvpn screen jq speedometer
 # Some extra packages (not from Ubuntu) are required as well:
@@ -14,14 +16,14 @@ fi
 
 SCREEN_NAME=ProtonVPN
 IFACE_EXT=tun0
-OVPN_USER='{{ vpn.ovpn_user }}'  # see comment in config file for the + suffixes
-OVPN_PASS='{{ vpn.ovpn_pass }}'  # as provided by Proton
+OVPN_USER='{{ item.value.ovpn_user }}'  # see comment in config file for the + suffixes
+OVPN_PASS='{{ item.value.ovpn_pass }}'  # as provided by Proton
 OVPN_CONFIG_PREFIX=$(mktemp -d)
 OVPN_CONFIG_FILE="${OVPN_CONFIG_PREFIX}"/protonvpn.ovpn
 OVPN_USER_PASS_FILE="${OVPN_CONFIG_PREFIX}"/user_pass.txt
 OVPN_PIDFILE=/var/run/openvpn_protonvpn.pid
 OVPN_DARKSTAT_PIDFILE=/var/run/darkstat.pid
-TARGET_COUNTRY_CODE=CH
+TARGET_COUNTRY_CODE={{item.key|upper}}
 
 function _ovpn_disconnect() {
     local CURPID I
@@ -227,4 +229,4 @@ exit 0
 
 # === CONFIGURATION === #
 
-{{ vpn.ovpn_conf }}
+{{ item.value.ovpn_conf }}
