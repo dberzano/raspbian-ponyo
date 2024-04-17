@@ -34,6 +34,23 @@
   tags:
     - python
 
+- name: Create base directory for Telegram secrets
+  file:
+    path: /opt/telegramsecrets
+    state: directory
+    mode: "0755"
+  tags:
+    - python
+
+- name: Secrets for Telegram bots
+  copy:
+    content: "{{item.value}}"
+    dest: /opt/telegramsecrets/{{item.key}}
+    mode: "0444"
+  loop: "{{ telegram_bots | dict2items }}"
+  tags:
+    - python
+
 - name: Copy requirements
   copy:
     src: requirements.txt
