@@ -21,6 +21,7 @@
         device: wlan0
   roles:
     - role: packages
+    - role: pythons
     - role: ipv6
-    - role: network
+    - role: network 
     - role: readonly

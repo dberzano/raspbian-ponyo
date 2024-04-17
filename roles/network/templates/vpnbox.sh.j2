@@ -143,6 +143,17 @@ function _ovpn_dhcp() {
     journalctl -f -u isc-dhcp-server || true
 }
 
+function _ovpn_full_connect_sequence() {
+    # Full connect sequence
+    _ovpn_disconnect
+    _ovpn_extract_config
+    _ovpn_connect
+    _ovpn_get_cc
+    _ovpn_darkstat
+    _ovpn_system_config
+    _ovpn_info
+}
+
 function _ovpn_menu() {
     # Entry point
     cat <<EoF
@@ -166,13 +177,7 @@ EoF
     case "$ANS" in
       1)
           # Connect to the VPN
-          _ovpn_disconnect
-          _ovpn_extract_config
-          _ovpn_connect
-          _ovpn_get_cc
-          _ovpn_darkstat
-          _ovpn_system_config
-          _ovpn_info
+          _ovpn_full_connect_sequence
       ;;
 
       2)
@@ -221,7 +226,14 @@ EoF
     esac
 }
 
+if [[ $1 == '--connect' ]]; then
+    # Non-interactive mode: connect and exit
+    _ovpn_full_connect_sequence
+    exit $?
+fi
+
 while [[ 1 ]]; do
+    # Interactive mode
     _ovpn_menu
 done
 

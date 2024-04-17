@@ -1,0 +1,69 @@
+---
+- name: Create base directory for Python venv
+  file:
+    path: /opt/python/globalvenv
+    state: directory
+    mode: "0755"
+  tags:
+    - python
+
+- name: Check if Python virtual environment exists
+  stat:
+    path: /opt/python/globalvenv/bin/activate
+  register: stat_pythonglobalvenv
+  tags:
+    - python
+
+- name: Create Python global venv
+  when: not stat_pythonglobalvenv.stat.exists
+  command:
+    argv:
+      - "python3"
+      - "-m"
+      - "venv"
+      - "/opt/python/globalvenv"
+  tags:
+    - python
+
+- name: Copy venv script in place
+  copy:
+    src: pythonglobalvenv.sh
+    dest: /opt/python/globalvenv/bin/pythonglobalvenv.sh
+    owner: root
+    mode: "0755"
+  tags:
+    - python
+
+- name: Copy requirements
+  copy:
+    src: requirements.txt
+    dest: /opt/python/globalvenv/requirements.txt
+    owner: root
+    mode: "0644"
+  register: copy_requirements
+  tags:
+    - python
+
+- name: Install pip dependencies
+  when: copy_requirements.changed
+  command:
+    argv:
+      - /opt/python/globalvenv/bin/pythonglobalvenv.sh
+      - "-m"
+      - pip
+      - install
+      - "-r"
+      - /opt/python/globalvenv/requirements.txt
+  tags:
+    - python
+
+- name: Copy Python scripts in place
+  copy:
+    src: "{{item}}"
+    dest: /usr/local/bin/
+    owner: root
+    mode: "0755"
+  with_fileglob:
+    - "files/*.py"
+  tags:
+    - python
