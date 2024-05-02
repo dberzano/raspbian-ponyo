@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from pydantic import BaseModel, ConfigDict, Secret
-from telegram import Bot, ForceReply, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -20,6 +21,7 @@ class BotConfig(BaseModel):
 
     telegram_api_key: Secret[str]
     authorized_chat_ids: list[int]
+    vpn_flavours: list[str]
     model_config = ConfigDict(extra="forbid")
 
 
@@ -28,37 +30,6 @@ LOGGER: logging.Logger = None
 
 # Configuration
 CONF: Optional[BotConfig] = None
-
-
-# Define a few command handlers. These usually take the two arguments update and
-# context.
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /start is issued."""
-    user = update.effective_user
-    await update.message.reply_html(
-        rf"Hi {user.mention_html()}!",
-        reply_markup=ForceReply(selective=True),
-    )
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /help is issued."""
-    await update.message.reply_text("Help!")
-
-
-async def handle_echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Echo the user message."""
-    logger.info(f"echo was called with: {update.message.text}")
-    logger.info(f"updater object: {update}")
-    await update.message.reply_text(update.message.text)
-
-
-async def handle_unauthorized(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    """Echo the user message."""
-    logger.warning(f"a message came from an unauthorized party - ignoring: {update}")
-    await update.message.reply_text("unauthorized")
 
 
 class FilterAuthorizedChatId(filters.BaseFilter):
@@ -72,18 +43,25 @@ class FilterAuthorizedChatId(filters.BaseFilter):
         return update.effective_chat.id in self._authorized_ids
 
 
-async def send_msg_on_start(bot: Bot):
-    await bot.send_message(chat_id=AUTHORIZED_CHAT_IDS[0], text="I am up and running!")
-
-
 def _init_logger() -> None:
     """Initialize logger for all."""
     global LOGGER
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
     LOGGER = logging.getLogger("svizzerino")
+    LOGGER.setLevel(logging.DEBUG)
+    svizzerino_handler = logging.StreamHandler()
+    svizzerino_handler.setLevel(logging.DEBUG)
+    svizzerino_handler.setFormatter(formatter)
+    LOGGER.addHandler(svizzerino_handler)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.WARNING)
+    root_handler = logging.StreamHandler()
+    root_handler.setLevel(logging.WARNING)
+    root_handler.setFormatter(formatter)
+    root_logger.addHandler(root_handler)
 
 
 def _init_config() -> None:
@@ -111,7 +89,8 @@ def _print_initial_message(application: Application):
     async def _handle_print_event(context: ContextTypes.DEFAULT_TYPE) -> None:
         """Actually prints the message."""
         job = context.job
-        await context.bot.send_message(job.chat_id, text=f"Hello, the bot just started")
+        text, markup = _prepare_vpn_menu()
+        await context.bot.send_message(job.chat_id, text=text, reply_markup=markup)
 
     for cid in CONF.authorized_chat_ids:
         LOGGER.info(f"printing welcome message for chat ID {cid}")
@@ -122,54 +101,84 @@ def _print_initial_message(application: Application):
         )
 
 
+def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
+    """Prepare the VPN menu with the buttons."""
+    keyboard = [
+        [
+            InlineKeyboardButton(flavour.upper(), callback_data=flavour)
+            for flavour in CONF.vpn_flavours
+        ],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    return "Choose the VPN variant you want to connect to:", reply_markup
+
+
+async def handle_cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a message when the command /start is issued."""
+    text, markup = _prepare_vpn_menu()
+    await update.message.reply_text(text=text, reply_markup=markup)
+
+
+async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Parses the CallbackQuery and updates the message text."""
+    query = update.callback_query
+
+    # CallbackQueries need to be answered, even if no notification to the user is needed
+    # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
+    await query.answer()
+
+    await query.edit_message_text(text=f"Selected option: {query.data}")
+
+
+async def handle_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle all unauthorized users."""
+    LOGGER.warning(f"a message came from an unauthorized party - ignoring: {update}")
+    await update.message.reply_text("you are not authorized to interact with this bot")
+
+
+async def handle_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle all unauthorized users."""
+    LOGGER.warning(f"user {update.effective_chat.id} is authorized but wrote something unhandled")
+    await update.message.reply_text("I do not understand")
+
+
 def main():
     """Entry point."""
     _init_logger()
     _init_config()
 
     LOGGER.info("initializing Telegram bot")
-    application = (
-        Application.builder().token(CONF.telegram_api_key.get_secret_value()).build()
+    application = Application.builder().token(CONF.telegram_api_key.get_secret_value()).build()
+    authorized = FilterAuthorizedChatId(CONF.authorized_chat_ids)  # only authorized IDs can chat
+
+    # Add a handler for the /start command
+    application.add_handler(
+        CommandHandler(command="start", callback=handle_cmd_start, filters=authorized)
     )
-    authorized = FilterAuthorizedChatId(
-        CONF.authorized_chat_ids
-    )  # only authorized IDs can chat
+
+    # Add a handler for the replies to the start command
+    application.add_handler(CallbackQueryHandler(handle_reply_to_start))
+
+    # Handle everything else (unknown)
+    application.add_handler(
+        MessageHandler(
+            filters=(filters.ALL & authorized),
+            callback=handle_unknown,
+        )
+    )
+
+    # Handle everything else (not authorized) - note: only one handler will trigger (fallback)
+    application.add_handler(
+        MessageHandler(
+            filters=(filters.TEXT & ~filters.COMMAND),
+            callback=handle_unauthorized,
+        )
+    )
 
     _print_initial_message(application)
 
     # Blocking call - run all the events and start listening for commands
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-    # Print message at start - requires job-queue to be installed
-
-    # # Command handlers (skip if not authorized)
-    # application.add_handler(
-    #     CommandHandler(command="start", callback=start, filters=authorized)
-    # )
-    # application.add_handler(
-    #     CommandHandler(command="help", callback=help_command, filters=authorized)
-    # )
-
-    # # Handle everything else (authorized users only)
-    # application.add_handler(
-    #     MessageHandler(
-    #         filters=(authorized & filters.TEXT & ~filters.COMMAND),
-    #         callback=handle_echo,
-    #     )
-    # )
-
-    # # Handle everything else (not authorized) - note: only one handler will trigger, so this is a fallback
-    # application.add_handler(
-    #     MessageHandler(
-    #         filters=(filters.TEXT & ~filters.COMMAND),
-    #         callback=handle_unauthorized,
-    #     )
-    # )
-
-
-
-    # async with application.bot:
-    #     application.bot.send_message(chat_id=AUTHORIZED_CHAT_IDS[0], text="I am up and running!")
 
 
 if __name__ == "__main__":
