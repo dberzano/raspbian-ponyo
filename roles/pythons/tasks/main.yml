@@ -44,10 +44,10 @@
 
 - name: Secrets for Telegram bots
   copy:
-    content: "{{item.value}}"
-    dest: /opt/telegramsecrets/{{item.key}}
+    content: "{{ telegram_bots[item] }}"
+    dest: /opt/telegramsecrets/{{item}}
     mode: "0444"
-  loop: "{{ telegram_bots | dict2items }}"
+  loop: "{{ telegram_bots.keys() }}"
   tags:
     - python
 

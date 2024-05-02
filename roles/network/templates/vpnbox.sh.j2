@@ -30,18 +30,18 @@ function _ovpn_disconnect() {
     CURPID=$(cat "$OVPN_PIDFILE" 2> /dev/null || true)
     if ! kill -0 "$CURPID" &> /dev/null; then
         echo "No current OpenVPN process for ProtonVPN to terminate"
-	return 0
+    return 0
     fi
     # We have the PID; try gracefully and force-terminate the OpenVPN connection first
     echo -n "Terminating current OpenVPN connection (PID is $CURPID)..."
     kill -15 "$CURPID" &> /dev/null || true
     for ((I=0; I<5; I++)); do
-	if kill -0 "$CURPID" &> /dev/null; then
+    if kill -0 "$CURPID" &> /dev/null; then
             echo -n .
-	    sleep 1
-	else
-	    break
-	fi
+        sleep 1
+    else
+        break
+    fi
     done
     echo  # newline
     kill -9 "$CURPID" &> /dev/null || true
@@ -73,8 +73,8 @@ function _ovpn_get_cc() {
         CC=$(echo "$RAW" | jq -r .countryCode || true)
         if [[ $CC == $TARGET_COUNTRY_CODE ]]; then
             EXTERNAL_IP=$(echo "$RAW" | jq -r .query)
-    	echo  # newline
-    	break
+        echo  # newline
+        break
         fi
         echo -n .
         sleep 2
@@ -86,13 +86,17 @@ function _ovpn_get_cc() {
     fi
 }
 
-function _ovpn_darkstat() {
+function _ovpn_darkstat_kill {
     echo "Terminating current Darkstat instances..."
     local DARKPID
     DARKPID=$(cat $OVPN_DARKSTAT_PIDFILE 2> /dev/null || true)
     kill -15 "$DARKPID" &> /dev/null || true
     sleep 1
     kill -9 "$DARKPID" &> /dev/null || true
+}
+
+function _ovpn_darkstat() {
+    _ovpn_darkstat_kill
     echo "Starting Darkstat..."
     rm -f "$OVPN_DARKSTAT_PIDFILE"
     darkstat -i $IFACE_EXT --pidfile "$OVPN_DARKSTAT_PIDFILE" -p 80
@@ -154,6 +158,12 @@ function _ovpn_full_connect_sequence() {
     _ovpn_info
 }
 
+function _ovpn_full_disconnect_sequence() {
+    # Full disconnect sequence
+    _ovpn_darkstat_kill
+    _ovpn_disconnect
+}
+
 function _ovpn_menu() {
     # Entry point
     cat <<EoF
@@ -208,12 +218,12 @@ EoF
 
       8)
           _ovpn_disconnect
-	  reboot
+          reboot
       ;;
 
       9)
           _ovpn_disconnect
-	  poweroff
+          poweroff
       ;;
 
       0)
@@ -230,6 +240,9 @@ if [[ $1 == '--connect' ]]; then
     # Non-interactive mode: connect and exit
     _ovpn_full_connect_sequence
     exit $?
+elif [[ $1 == '--disconnect' ]]; then
+    # Non-interactive mode: disconnect and exit
+    _ovpn_full_disconnect_sequence
 fi
 
 while [[ 1 ]]; do

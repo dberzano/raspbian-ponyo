@@ -1,11 +1,13 @@
 #!/opt/python/globalvenv/bin/pythonglobalvenv.sh
 
+import asyncio
 import logging
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
-from pydantic import BaseModel, ConfigDict, Secret
+from pydantic import BaseModel, ConfigDict, Secret, model_validator
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
+from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -14,6 +16,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from typing_extensions import Self
 
 
 class BotConfig(BaseModel):
@@ -22,7 +25,27 @@ class BotConfig(BaseModel):
     telegram_api_key: Secret[str]
     authorized_chat_ids: list[int]
     vpn_flavours: list[str]
+
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def autofill_vpn_flavours(cls, data: Any) -> Any:
+        """Autofill VPN flavours from installed binaries."""
+        vpn_flavours = data.get("vpn_flavours", [])
+        if not vpn_flavours:
+            vpn_flavours = sorted(
+                x.name.rsplit("-", 1)[1] for x in Path("/usr/local/sbin").glob("vpnbox-*")
+            )
+            data["vpn_flavours"] = vpn_flavours
+        return data
+
+    @model_validator(mode="after")
+    def check_vpn_flavours(self) -> Self:
+        """Check if we have at least one VPN flavour."""
+        if not self.vpn_flavours:
+            raise ValueError("vpn_flavours must have at least one entry")
+        return self
 
 
 # Use this logger for all message printouts
@@ -70,17 +93,22 @@ def _init_config() -> None:
     conf_files = [
         Path.cwd() / ".vpnbox-telegram-config.json",
         Path.home() / ".vpnbox-telegram-config.json",
+        Path("/opt/telegramsecrets/vpnbox-telegram"),
     ]
+    exc = None
     for c in conf_files:
         LOGGER.debug(f"trying to load configuration {c}")
         try:
             CONF = BotConfig.model_validate_json(c.read_text())
+            exc = None
             break
         except Exception as e:
             LOGGER.error(f"failed loading {c}: {type(e).__name__} - {str(e)}")
-    if CONF is None:
-        raise RuntimeError("cannot load configuration")
+            exc = e
+    if exc is not None:
+        raise exc
     LOGGER.info(f"configuration loaded from {c}")
+    LOGGER.info(f"VPN flavours: {', '.join(CONF.vpn_flavours)}")
 
 
 def _print_initial_message(application: Application):
@@ -90,7 +118,9 @@ def _print_initial_message(application: Application):
         """Actually prints the message."""
         job = context.job
         text, markup = _prepare_vpn_menu()
-        await context.bot.send_message(job.chat_id, text=text, reply_markup=markup)
+        await context.bot.send_message(
+            job.chat_id, text=text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN_V2
+        )
 
     for cid in CONF.authorized_chat_ids:
         LOGGER.info(f"printing welcome message for chat ID {cid}")
@@ -108,26 +138,57 @@ def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
             InlineKeyboardButton(flavour.upper(), callback_data=flavour)
             for flavour in CONF.vpn_flavours
         ],
+        [InlineKeyboardButton("❌ Disconnect", callback_data="disconnect")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    return "Choose the VPN variant you want to connect to:", reply_markup
+    return "Choose the *VPN variant* you want to connect to:", reply_markup
 
 
 async def handle_cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     text, markup = _prepare_vpn_menu()
-    await update.message.reply_text(text=text, reply_markup=markup)
+    await update.message.reply_text(
+        text=text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN_V2
+    )
 
 
 async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Parses the CallbackQuery and updates the message text."""
+    """Parses the CallbackQuery and updates the message text - this connects to the VPNs."""
     query = update.callback_query
 
     # CallbackQueries need to be answered, even if no notification to the user is needed
     # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
     await query.answer()
 
-    await query.edit_message_text(text=f"Selected option: {query.data}")
+    await query.edit_message_text(text=f"⏳ You have selected: {query.data}, please wait")
+
+    if query.data == "disconnect":
+        cmd = [f"vpnbox-{CONF.vpn_flavours[0]}", "--disconnect"]
+    else:
+        cmd = [f"vpnbox-{query.data}", "--connect"]
+
+    try:
+        aprocess = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+    except FileNotFoundError:
+        await query.edit_message_text(
+            text=f"❌ Cannot find executable to run",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
+
+    stdout, _ = await aprocess.communicate()
+
+    escaped_out = stdout.decode("utf-8").replace("`", "\\`")
+    emoji = "✅" if aprocess.returncode == 0 else "❌"
+
+    await query.edit_message_text(
+        text=f"{emoji} Exitcode `{aprocess.returncode}` \\- output:\n\n```\n{escaped_out}```",
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
 
 
 async def handle_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
