@@ -84,3 +84,22 @@
     - "files/*.py"
   tags:
     - python
+
+# Some Python scripts require systemd stuff
+
+- name: Create systemd service unit file
+  copy:
+    src: vpnbox-telegram.service
+    dest: /etc/systemd/system/vpnbox-telegram.service
+  notify:
+    - Reload systemd
+  tags:
+    - python
+
+- name: Start and enable the service
+  systemd:
+    name: vpnbox-telegram
+    state: started
+    enabled: yes
+  tags:
+    - python

@@ -1,0 +1,12 @@
+[Unit]
+Description=vpnbox-telegram
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vpnbox-telegram.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
