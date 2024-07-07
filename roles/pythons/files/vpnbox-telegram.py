@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from flag import FlagError, flag_safe
 from pydantic import BaseModel, ConfigDict, Secret, model_validator
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
 from telegram.constants import ParseMode
@@ -119,7 +120,10 @@ def _print_initial_message(application: Application):
         job = context.job
         text, markup = _prepare_vpn_menu()
         await context.bot.send_message(
-            job.chat_id, text=text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN_V2
+            job.chat_id,
+            text=text,
+            reply_markup=markup,
+            parse_mode=ParseMode.MARKDOWN_V2,
         )
 
     for cid in CONF.authorized_chat_ids:
@@ -131,11 +135,26 @@ def _print_initial_message(application: Application):
         )
 
 
+def _flavour_to_flag(flavour: str) -> str:
+    """Convert flavour to the corresponding Unicode flag if possible."""
+    try:
+        flavour_flag = flag_safe(flavour[0:2])
+    except FlagError:
+        # Cannot convert to flag: return it as is, but uppercased
+        return flavour.upper()
+    if len(flavour) == 2:
+        # Name is fully constituted by the country code: return flag
+        return flavour_flag
+    else:
+        # Name contains country code and something else: return flag and description
+        return f"{flavour_flag} ({flavour.upper()})"
+
+
 def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
     """Prepare the VPN menu with the buttons."""
     keyboard = [
         [
-            InlineKeyboardButton(flavour.upper(), callback_data=flavour)
+            InlineKeyboardButton(_flavour_to_flag(flavour), callback_data=flavour)
             for flavour in CONF.vpn_flavours
         ],
         [InlineKeyboardButton("❌ Disconnect", callback_data="disconnect")],
@@ -160,7 +179,9 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
     await query.answer()
 
-    await query.edit_message_text(text=f"⏳ You have selected: {query.data}, please wait")
+    await query.edit_message_text(
+        text=f"⏳ You have selected: {_flavour_to_flag(query.data)}, please wait"
+    )
 
     if query.data == "disconnect":
         cmd = [f"vpnbox-{CONF.vpn_flavours[0]}", "--disconnect"]
