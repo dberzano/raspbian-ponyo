@@ -243,6 +243,7 @@ if [[ $1 == '--connect' ]]; then
 elif [[ $1 == '--disconnect' ]]; then
     # Non-interactive mode: disconnect and exit
     _ovpn_full_disconnect_sequence
+    exit $?
 fi
 
 while [[ 1 ]]; do
