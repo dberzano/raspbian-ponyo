@@ -157,7 +157,10 @@ def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
             InlineKeyboardButton(_flavour_to_flag(flavour), callback_data=flavour)
             for flavour in CONF.vpn_flavours
         ],
-        [InlineKeyboardButton("❌ Disconnect", callback_data="disconnect")],
+        [
+            InlineKeyboardButton("❌ Disconnect", callback_data="disconnect"),
+            InlineKeyboardButton("🚫 Cancel", callback_data="cancel"),
+        ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     return "Choose the *VPN variant* you want to connect to:", reply_markup
@@ -178,6 +181,10 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     # CallbackQueries need to be answered, even if no notification to the user is needed
     # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
     await query.answer()
+
+    if query.data == "cancel":
+        await query.delete_message()
+        return
 
     await query.edit_message_text(
         text=f"⏳ You have selected: {_flavour_to_flag(query.data)}, please wait"
