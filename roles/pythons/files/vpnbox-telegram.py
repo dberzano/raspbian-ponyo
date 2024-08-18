@@ -168,6 +168,7 @@ def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
 
 async def handle_cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
+    LOGGER.info(f"user {update.effective_user} has issued command /start")
     text, markup = _prepare_vpn_menu()
     await update.message.reply_text(
         text=text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN_V2
@@ -177,6 +178,9 @@ async def handle_cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Parses the CallbackQuery and updates the message text - this connects to the VPNs."""
     query = update.callback_query
+    LOGGER.info(
+        f"user {update.callback_query.from_user} replied to /start - query data is {query.data}"
+    )
 
     # CallbackQueries need to be answered, even if no notification to the user is needed
     # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
@@ -191,8 +195,10 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
     if query.data == "disconnect":
+        LOGGER.debug(f"user {query.from_user} has requested disconnection from all VPNs")
         cmd = [f"vpnbox-{CONF.vpn_flavours[0]}", "--disconnect"]
     else:
+        LOGGER.debug(f"user {query.from_user} has requested connection to VPN flavor {query.data}")
         cmd = [f"vpnbox-{query.data}", "--connect"]
 
     try:
@@ -213,6 +219,7 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     escaped_out = stdout.decode("utf-8").replace("`", "\\`")
     emoji = "✅" if aprocess.returncode == 0 else "❌"
 
+    LOGGER.debug(f"cmd {' '.join(cmd)} finished with exitcode {aprocess.returncode} - updating msg")
     await query.edit_message_text(
         text=f"{emoji} Exitcode `{aprocess.returncode}` \\- output:\n\n```\n{escaped_out}```",
         parse_mode=ParseMode.MARKDOWN_V2,
@@ -237,7 +244,8 @@ def main():
     _init_config()
 
     LOGGER.info("initializing Telegram bot")
-    application = Application.builder().token(CONF.telegram_api_key.get_secret_value()).build()
+    application_builder = Application.builder()
+    application = application_builder.token(CONF.telegram_api_key.get_secret_value()).build()
     authorized = FilterAuthorizedChatId(CONF.authorized_chat_ids)  # only authorized IDs can chat
 
     # Add a handler for the /start command
