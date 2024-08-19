@@ -23,5 +23,5 @@
     - role: packages
     - role: pythons
     - role: ipv6
-    - role: network 
+    - role: network
     - role: readonly
