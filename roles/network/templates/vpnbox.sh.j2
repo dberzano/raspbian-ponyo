@@ -69,7 +69,7 @@ function _ovpn_get_cc() {
     # Wait until country code shows as the target one
     echo -n "Waiting until target Country Code is ${TARGET_COUNTRY_CODE} (up to 60 s)..."
     for ((I=0; I<30; I++)); do
-        RAW=$(curl -sfL --max-time 3 http://ip-api.com/json || true)
+        RAW=$(curl -sfL --ipv4 --max-time 3 http://ip-api.com/json || true)
         CC=$(echo "$RAW" | jq -r .countryCode || true)
         if [[ $CC == $TARGET_COUNTRY_CODE ]]; then
             EXTERNAL_IP=$(echo "$RAW" | jq -r .query)
