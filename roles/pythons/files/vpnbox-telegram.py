@@ -118,7 +118,7 @@ def _print_initial_message(application: Application):
     async def _handle_print_event(context: ContextTypes.DEFAULT_TYPE) -> None:
         """Actually prints the message."""
         job = context.job
-        text, markup = _prepare_vpn_menu()
+        text, markup = await _prepare_vpn_menu()
         await context.bot.send_message(
             job.chat_id,
             text=text,
@@ -150,7 +150,23 @@ def _flavour_to_flag(flavour: str) -> str:
         return f"{flavour_flag} ({flavour.upper()})"
 
 
-def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
+async def _get_wifi_name() -> Optional[str]:
+    """Get the name of the connected wifi, or None if not connected."""
+    try:
+        aprocess = await asyncio.create_subprocess_exec(
+            "iwgetid",
+            "--raw",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return None
+
+    stdout, _ = await aprocess.communicate()
+    return stdout.decode("utf-8").strip()
+
+
+async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
     """Prepare the VPN menu with the buttons."""
     keyboard = [
         [
@@ -163,13 +179,20 @@ def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
         ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    return "Choose the *VPN variant* you want to connect to:", reply_markup
+    # run iwgetid to get the SSID of the connected wifi
+    wifi_ssid = await _get_wifi_name()
+    if wifi_ssid is not None:
+        wifi_ssid.replace(".", "\\.")
+        msg = f"Connected to wifi network *{wifi_ssid}*\\. Pick a VPN variant:"
+    else:
+        msg = "Not connected to a wifi network\\. Pick a VPN variant:"
+    return msg, reply_markup
 
 
 async def handle_cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     LOGGER.info(f"user {update.effective_user} has issued command /start")
-    text, markup = _prepare_vpn_menu()
+    text, markup = await _prepare_vpn_menu()
     await update.message.reply_text(
         text=text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN_V2
     )
