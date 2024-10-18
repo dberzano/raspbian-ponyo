@@ -9,6 +9,11 @@
   tags:
     - wifi
 
+- name: Add netplan configuration (original with all networks)
+  template: src=routerino.yaml.j2 dest=/etc/netplan/routerino.yaml_all_networks mode=0600
+  tags:
+    - wifi
+
 - name: Create DHCP server override directory
   file: path=/etc/systemd/system/isc-dhcp-server.service.d state=directory mode=0755
 

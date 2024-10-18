@@ -111,6 +111,30 @@
     - /var/spool
     - /var/cache
 
+- name: Copy netplan configuration directory to /var/tmp/etc_netplan
+  command:
+    argv:
+      - rsync
+      - -av
+      - --delete
+      - /etc/netplan/
+      - /var/tmp/etc_netplan/
+
+- name: Remove original netplan directory
+  command:
+    argv:
+      - rm
+      - -rf
+      - /etc/netplan
+
+- name: Replace /etc/netplan with a symlink to /var/tmp/etc_netplan
+  command:
+    argv:
+      - ln
+      - -sfn
+      - /var/tmp/etc_netplan
+      - /etc/netplan
+
 - name: Fix mount permissions on tmp directories
   file: state=directory mode=1777 path="{{item}}"
   loop:

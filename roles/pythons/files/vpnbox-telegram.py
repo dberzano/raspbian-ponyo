@@ -2,9 +2,11 @@
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+import yaml
 from flag import FlagError, flag_safe
 from pydantic import BaseModel, ConfigDict, Secret, model_validator
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
@@ -26,6 +28,8 @@ class BotConfig(BaseModel):
     telegram_api_key: Secret[str]
     authorized_chat_ids: list[int]
     vpn_flavours: list[str]
+    netplan_config: Path = Path("/etc/netplan/routerino.yaml")
+    wifi_iface: str = "wlan0"
 
     model_config = ConfigDict(extra="forbid")
 
@@ -168,18 +172,24 @@ async def _get_wifi_name() -> Optional[str]:
 
 async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
     """Prepare the VPN menu with the buttons."""
-    keyboard = [
-        [
-            InlineKeyboardButton(_flavour_to_flag(flavour), callback_data=flavour)
-            for flavour in CONF.vpn_flavours
-        ],
-        [
-            InlineKeyboardButton("❌ Disconnect", callback_data="disconnect"),
-            InlineKeyboardButton("🚫 Cancel", callback_data="cancel"),
-        ],
+    # Standard buttons for picking a VPN flavour and disconnecting
+    row1 = [
+        InlineKeyboardButton(_flavour_to_flag(flavour), callback_data=flavour)
+        for flavour in CONF.vpn_flavours
     ]
+    row2 = [
+        InlineKeyboardButton("❌ Disconnect", callback_data="disconnect"),
+        InlineKeyboardButton("🚫 Cancel", callback_data="cancel"),
+    ]
+    keyboard = [row1, row2]
+
+    # Present a list of known WiFi networks to connect to as buttons
+    for net in await get_list_of_known_wifi_networks():
+        keyboard.append([InlineKeyboardButton(f"📡 {net}", callback_data=f"cancel")])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    # run iwgetid to get the SSID of the connected wifi
+
+    # Run iwgetid to get the SSID of the connected wifi
     wifi_ssid = await _get_wifi_name()
     if wifi_ssid is not None:
         wifi_ssid.replace(".", "\\.")
@@ -259,6 +269,40 @@ async def handle_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Handle all unauthorized users."""
     LOGGER.warning(f"user {update.effective_chat.id} is authorized but wrote something unhandled")
     await update.message.reply_text("I do not understand")
+
+
+async def get_list_of_known_wifi_networks() -> set[str]:
+    """Run `iwlist wlan0 scan` and get the list of ESSIDs only."""
+    try:
+        aprocess = await asyncio.create_subprocess_exec(
+            "iwlist",
+            CONF.wifi_iface,
+            "scan",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await aprocess.communicate()
+
+        output = stdout.decode("utf-8")
+        essids = set(re.findall(r'ESSID:"(.*?)"', output))
+        # return essids
+    except Exception as e:
+        LOGGER.error(f"unable to get the list of WiFi networks - {e.__class__.__name__}: {str(e)}")
+        return []
+
+    # Open the netplan file and return a list of known ESSIDs
+    netplan_config_all = CONF.netplan_config.with_suffix(".yaml_all_networks")
+    try:
+        with open(netplan_config_all) as f:
+            data = yaml.safe_load(f)
+        known_essids = data["network"]["wifis"][CONF.wifi_iface]["access-points"].keys()
+        del data
+    except Exception as e:
+        LOGGER.error(f"unable to read netplan file - {e.__class__.__name__}: {str(e)}")
+        return []
+
+    # We need to return only the essids present in known_essids by using set() operations
+    return essids & known_essids
 
 
 def main():

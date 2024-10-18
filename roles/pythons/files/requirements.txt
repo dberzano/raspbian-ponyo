@@ -4,3 +4,4 @@ isort==5.13.2
 black==24.4.2
 requests==2.32.3
 emoji-country-flag==2.0.1
+PyYAML==6.0.2
