@@ -185,7 +185,7 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
 
     # Present a list of known WiFi networks to connect to as buttons
     for net in await get_list_of_known_wifi_networks():
-        keyboard.append([InlineKeyboardButton(f"📡 {net}", callback_data=f"cancel")])
+        keyboard.append([InlineKeyboardButton(f"🛜 {net}", callback_data=f"wifi:{net}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -221,6 +221,12 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
 
     if query.data == "cancel":
         await query.delete_message()
+        return
+
+    if query.data.startswith("wifi:"):
+        connect_to = query.data.split(":", 1)[1]
+        await query.edit_message_text(text=f"🛜 Requested connection to WiFi: *{connect_to}*")
+        await connect_to_wifi_network(connect_to)
         return
 
     await query.edit_message_text(
@@ -269,6 +275,43 @@ async def handle_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Handle all unauthorized users."""
     LOGGER.warning(f"user {update.effective_chat.id} is authorized but wrote something unhandled")
     await update.message.reply_text("I do not understand")
+
+
+async def connect_to_wifi_network(wifi_network: str) -> None:
+    """Change the netplan configuration so that it contains a single wifi network."""
+    # Open netplan configuration
+    netplan_config_all = CONF.netplan_config.with_suffix(".yaml_all_networks")
+    try:
+        # Read configuration first
+        LOGGER.debug(f"reading netplan configuration from {netplan_config_all}")
+        with open(netplan_config_all) as f:
+            data = yaml.safe_load(f)
+        data["network"]["wifis"][CONF.wifi_iface]["access-points"] = {
+            name: content
+            for name, content in data["network"]["wifis"][CONF.wifi_iface]["access-points"].items()
+            if name == wifi_network
+        }
+
+        # Write configuration
+        LOGGER.debug(f"writing netplan configuration to {CONF.netplan_config}")
+        with open(CONF.netplan_config, "w") as f:
+            yaml.safe_dump(data, f)
+
+        # Apply configuration
+        LOGGER.debug(f"applying netplan configuration")
+        aprocess = await asyncio.create_subprocess_exec(
+            "netplan",
+            "apply",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await aprocess.communicate()
+
+        LOGGER.info(f"applied netplan configuration for WiFi network {wifi_network}")
+
+    except Exception as e:
+        LOGGER.error(f"unable to connect to WiFi network - {e.__class__.__name__}: {str(e)}")
+        return
 
 
 async def get_list_of_known_wifi_networks() -> set[str]:
