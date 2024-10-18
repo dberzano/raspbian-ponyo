@@ -84,6 +84,13 @@
     - "files/*.py"
   tags:
     - python
+  register: copied_python_scripts
+
+# - name: Print debug copied files
+#   debug:
+#     var: copied_python_scripts
+#   tags:
+#     - python
 
 # Some Python scripts require systemd stuff
 
@@ -101,5 +108,14 @@
     name: vpnbox-telegram
     state: started
     enabled: yes
+  tags:
+    - python
+
+- name: Restart the service if vpnbox-telegram.py has changed
+  systemd:
+    name: vpnbox-telegram
+    state: restarted
+  when: >
+    copied_python_scripts.results | selectattr("changed", "equalto", true) | map(attribute="item") | map("basename") | list | length > 0
   tags:
     - python
