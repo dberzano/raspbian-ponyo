@@ -3,6 +3,8 @@
 import asyncio
 import logging
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -28,7 +30,11 @@ class BotConfig(BaseModel):
     telegram_api_key: Secret[str]
     authorized_chat_ids: list[int]
     vpn_flavours: list[str]
-    netplan_config: Path = Path("/etc/netplan/routerino.yaml")
+    netplan_dir: Path = Path("/etc/netplan")
+    netplan_writable_dir: Path = Path("/var/tmp/dynamic_netplan_config")
+    netplan_config_dest: str = "routerino.yaml"
+    netplan_config_src: str = "routerino.yaml_all_networks"
+
     wifi_iface: str = "wlan0"
 
     model_config = ConfigDict(extra="forbid")
@@ -116,7 +122,53 @@ def _init_config() -> None:
     LOGGER.info(f"VPN flavours: {', '.join(CONF.vpn_flavours)}")
 
 
-def _print_initial_message(application: Application):
+def _init_netplan() -> None:
+    """Make it possible to write under the netplan configuration dir.
+
+    We do the following operations but mostly in Python:
+
+    ```sh
+    rm -rf /var/tmp/dynamic_netplan_config
+    umount /etc/netplan || true
+    mkdir /var/tmp/dynamic_netplan_config
+    rsync -a --delete /etc/netplan/ /var/tmp/dynamic_netplan_config/
+    mount -o bind /var/tmp/dynamic_netplan_config /etc/netplan
+    ```
+    """
+    # Remove original directory
+    LOGGER.debug(f"removing {CONF.netplan_writable_dir}")
+    shutil.rmtree(CONF.netplan_writable_dir, ignore_errors=True)
+
+    # Umount the netplan directory's bind mount, ignoring errors
+    LOGGER.debug(f"umounting bind-mounted {CONF.netplan_dir}")
+    subprocess.run(
+        ["umount", CONF.netplan_dir.as_posix()],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Create the writable directory (not ok if exists or parents do not exist)
+    LOGGER.debug(f"creating writable netplan config dir: {CONF.netplan_writable_dir}")
+    CONF.netplan_writable_dir.mkdir()
+
+    # Copy the contents of the original directory to the writable one using glob
+    for f in CONF.netplan_dir.glob("*"):
+        LOGGER.debug(f"copying {f} -> {CONF.netplan_writable_dir}")
+        shutil.copy(f, CONF.netplan_writable_dir)
+
+    # Bind mount the writable directory to the original one
+    LOGGER.debug(f"bind-mounting {CONF.netplan_writable_dir} to {CONF.netplan_dir}")
+    subprocess.run(
+        ["mount", "-o", "bind", CONF.netplan_writable_dir.as_posix(), CONF.netplan_dir.as_posix()],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    LOGGER.info("successfully initialized netplan configuration")
+
+
+def _print_initial_message(application: Application, when: int = 0):
     """Print message at startup using the asyncio paradigm."""
 
     async def _handle_print_event(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -134,7 +186,7 @@ def _print_initial_message(application: Application):
         LOGGER.info(f"printing welcome message for chat ID {cid}")
         application.job_queue.run_once(
             _handle_print_event,
-            when=0,
+            when=when,
             chat_id=cid,
         )
 
@@ -225,7 +277,10 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
 
     if query.data.startswith("wifi:"):
         connect_to = query.data.split(":", 1)[1]
-        await query.edit_message_text(text=f"🛜 Requested connection to WiFi: *{connect_to}*")
+        await query.edit_message_text(
+            text=f"🛜 Requested connection to WiFi: *{connect_to}*",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
         await connect_to_wifi_network(connect_to)
         return
 
@@ -280,11 +335,12 @@ async def handle_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def connect_to_wifi_network(wifi_network: str) -> None:
     """Change the netplan configuration so that it contains a single wifi network."""
     # Open netplan configuration
-    netplan_config_all = CONF.netplan_config.with_suffix(".yaml_all_networks")
+    netplan_config_read = CONF.netplan_writable_dir / CONF.netplan_config_src
+    netplan_config_write = CONF.netplan_writable_dir / CONF.netplan_config_dest
     try:
         # Read configuration first
-        LOGGER.debug(f"reading netplan configuration from {netplan_config_all}")
-        with open(netplan_config_all) as f:
+        LOGGER.debug(f"reading netplan configuration from {netplan_config_read}")
+        with open(netplan_config_read) as f:
             data = yaml.safe_load(f)
         data["network"]["wifis"][CONF.wifi_iface]["access-points"] = {
             name: content
@@ -293,8 +349,8 @@ async def connect_to_wifi_network(wifi_network: str) -> None:
         }
 
         # Write configuration
-        LOGGER.debug(f"writing netplan configuration to {CONF.netplan_config}")
-        with open(CONF.netplan_config, "w") as f:
+        LOGGER.debug(f"writing netplan configuration to {netplan_config_write}")
+        with open(netplan_config_write, "w") as f:
             yaml.safe_dump(data, f)
 
         # Apply configuration
@@ -331,18 +387,17 @@ async def get_list_of_known_wifi_networks() -> set[str]:
         # return essids
     except Exception as e:
         LOGGER.error(f"unable to get the list of WiFi networks - {e.__class__.__name__}: {str(e)}")
-        return []
+        return set()
 
     # Open the netplan file and return a list of known ESSIDs
-    netplan_config_all = CONF.netplan_config.with_suffix(".yaml_all_networks")
     try:
-        with open(netplan_config_all) as f:
+        with open(CONF.netplan_writable_dir / CONF.netplan_config_src) as f:
             data = yaml.safe_load(f)
         known_essids = data["network"]["wifis"][CONF.wifi_iface]["access-points"].keys()
         del data
     except Exception as e:
         LOGGER.error(f"unable to read netplan file - {e.__class__.__name__}: {str(e)}")
-        return []
+        return set()
 
     # We need to return only the essids present in known_essids by using set() operations
     return essids & known_essids
@@ -352,6 +407,7 @@ def main():
     """Entry point."""
     _init_logger()
     _init_config()
+    _init_netplan()
 
     LOGGER.info("initializing Telegram bot")
     application_builder = Application.builder()
