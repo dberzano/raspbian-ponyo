@@ -244,8 +244,7 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
     # Run iwgetid to get the SSID of the connected wifi
     wifi_ssid = await _get_wifi_name()
     if wifi_ssid is not None:
-        wifi_ssid.replace(".", "\\.")
-        msg = f"Connected to wifi network *{wifi_ssid}*\\. Pick a VPN variant:"
+        msg = f"Connected to wifi network *{telegram_escape(wifi_ssid)}*\\. Pick a VPN variant:"
     else:
         msg = "Not connected to a wifi network\\. Pick a VPN variant:"
     return msg, reply_markup
@@ -258,6 +257,14 @@ async def handle_cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text(
         text=text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN_V2
     )
+
+
+def telegram_escape(s: str) -> str:
+    """Escape some Telegram text."""
+    out = s
+    for c in "\\._*`":
+        out = out.replace(c, f"\\{c}")
+    return out
 
 
 async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -278,7 +285,7 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("wifi:"):
         connect_to = query.data.split(":", 1)[1]
         await query.edit_message_text(
-            text=f"🛜 Requested connection to WiFi: *{connect_to}*",
+            text=f"🛜 Requested connection to WiFi: *{telegram_escape(connect_to_escaped)}*",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
         await connect_to_wifi_network(connect_to)
