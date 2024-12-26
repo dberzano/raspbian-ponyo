@@ -12,6 +12,7 @@ network:
       link-local: []
       addresses:
       - {{ network.ethernet.address }}
+      - {{ network.ethernet.address_pretend }}
   wifis:
     # Wireless network configuration connects to one of the configured networks
     {{ network.wifi.device }}:
