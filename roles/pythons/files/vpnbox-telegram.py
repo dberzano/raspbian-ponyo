@@ -193,17 +193,20 @@ def _print_initial_message(application: Application, when: int = 0):
 
 def _flavour_to_flag(flavour: str) -> str:
     """Convert flavour to the corresponding Unicode flag if possible."""
+    flavour = flavour.lower()
+    if flavour in ("disconnect", "ssh_from_anywhere"):
+        return flavour
     try:
         flavour_flag = flag_safe(flavour[0:2])
     except FlagError:
         # Cannot convert to flag: return it as is, but uppercased
-        return flavour.upper()
+        return f"{flavour} (cannot find flag)"
     if len(flavour) == 2:
         # Name is fully constituted by the country code: return flag
         return flavour_flag
     else:
         # Name contains country code and something else: return flag and description
-        return f"{flavour_flag} ({flavour.upper()})"
+        return f"{flavour_flag} ({flavour})"
 
 
 async def _get_wifi_name() -> Optional[str]:
@@ -233,7 +236,11 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
         InlineKeyboardButton("❌ Disconnect", callback_data="disconnect"),
         InlineKeyboardButton("🚫 Cancel", callback_data="cancel"),
     ]
-    keyboard = [row1, row2]
+    row3 = [
+        # Add a row for remote SSH access via tmate, with proper terminal emoji
+        InlineKeyboardButton("🔒 SSH from anywhere", callback_data="ssh_from_anywhere"),
+    ]
+    keyboard = [row1, row2, row3]
 
     # Present a list of known WiFi networks to connect to as buttons
     for net in await get_list_of_known_wifi_networks():
@@ -292,12 +299,25 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     await query.edit_message_text(
-        text=f"⏳ You have selected: {_flavour_to_flag(query.data)}, please wait"
+        text=f"⏳ You have selected: *{telegram_escape(_flavour_to_flag(query.data))}*, please wait",
+        parse_mode=ParseMode.MARKDOWN_V2,
     )
 
     if query.data == "disconnect":
         LOGGER.debug(f"user {query.from_user} has requested disconnection from all VPNs")
         cmd = [f"vpnbox-{CONF.vpn_flavours[0]}", "--disconnect"]
+    elif query.data == "ssh_from_anywhere":
+        LOGGER.debug(f"user {query.from_user} has requested remote SSH access")
+        cmd = [
+            "bash",
+            "-c",
+            (
+                "tmate -S /tmp/tmate.sock kill-server &> /dev/null ; "
+                "tmate -S /tmp/tmate.sock new-session -d && "
+                "tmate -S /tmp/tmate.sock wait tmate-ready && "
+                "tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'"
+            ),
+        ]
     else:
         LOGGER.debug(f"user {query.from_user} has requested connection to VPN flavor {query.data}")
         cmd = [f"vpnbox-{query.data}", "--connect"]

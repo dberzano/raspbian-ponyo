@@ -18,6 +18,8 @@
       - autoconf
       # for captive portals
       - lynx
+      # for when local access is not possible
+      - tmate
 
 - name: Check if darkstat is installed
   stat: path=/usr/local/sbin/darkstat
