@@ -262,7 +262,7 @@ async def handle_cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 def telegram_escape(s: str) -> str:
     """Escape some Telegram text."""
     out = s
-    for c in "\\._*`":
+    for c in "\\*_[]()~>#+-=|{}.!`":  # note that the backslash must be the first one
         out = out.replace(c, f"\\{c}")
     return out
 
@@ -285,7 +285,7 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("wifi:"):
         connect_to = query.data.split(":", 1)[1]
         await query.edit_message_text(
-            text=f"🛜 Requested connection to WiFi: *{telegram_escape(connect_to_escaped)}*",
+            text=f"🛜 Requested connection to WiFi: *{telegram_escape(connect_to)}*",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
         await connect_to_wifi_network(connect_to)
@@ -317,7 +317,7 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
 
     stdout, _ = await aprocess.communicate()
 
-    escaped_out = stdout.decode("utf-8").replace("`", "\\`")
+    escaped_out = telegram_escape(stdout.decode("utf-8"))
     emoji = "✅" if aprocess.returncode == 0 else "❌"
 
     LOGGER.debug(f"cmd {' '.join(cmd)} finished with exitcode {aprocess.returncode} - updating msg")

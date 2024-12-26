@@ -69,3 +69,9 @@ Just run (given you have assigned the SSH nickname `svizzerino` to your Orange P
 ```sh
 ansible-playbook site.yml -i svizzerino,
 ```
+
+
+To do
+-----
+[ ] Use tmate for remote control behind problematic firewalls preventing local connections
+[ ] Detect connection down and reestablish automatically
