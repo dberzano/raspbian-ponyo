@@ -4,3 +4,9 @@
 
 - name: Restart DHCP server
   systemd: name=isc-dhcp-server state=restarted daemon_reload=yes
+
+- name: Restart systemd-resolved
+  systemd: name=systemd-resolved state=restarted
+
+- name: Restart dnsmasq
+  systemd: name=dnsmasq state=restarted

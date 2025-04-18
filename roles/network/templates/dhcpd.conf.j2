@@ -6,5 +6,5 @@ authoritative;
 subnet {{ network.ethernet.dhcp.subnet }} netmask {{ network.ethernet.dhcp.mask }} {
     range {{ network.ethernet.dhcp.range.low }} {{ network.ethernet.dhcp.range.high }};
     option routers {{ network.ethernet.address.split('/')|first }};
-    option domain-name-servers {{ network.ethernet.dhcp.range.dns|join(',') }};
+    option domain-name-servers {{ network.ethernet.address.split('/')|first }};
 }

@@ -2,6 +2,23 @@
 - name: Assign hostname
   hostname: name="{{ assigned_hostname }}"
 
+- name: Remove systemd DNS stub listener
+  lineinfile:
+    path: /etc/systemd/resolved.conf
+    line: 'DNSStubListener=no'
+  notify:
+    - Restart systemd-resolved
+
+- name: Configure dnsmasq hosts
+  copy: src=dnsmasq.hosts dest=/etc/dnsmasq.hosts
+  notify:
+    - Restart dnsmasq
+
+- name: Configure dnsmasq
+  template: src=dnsmasq.conf.j2 dest=/etc/dnsmasq.conf
+  notify:
+    - Restart dnsmasq
+
 - name: Stop vpnbox-telegram to allow netplan configuration to be applied
   systemd:
     name: vpnbox-telegram

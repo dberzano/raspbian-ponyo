@@ -20,6 +20,9 @@
       - lynx
       # for when local access is not possible
       - tmate
+      - dnsmasq
+      # for having nslookup for testing
+      - dnsutils
 
 - name: Check if darkstat is installed
   stat: path=/usr/local/sbin/darkstat
