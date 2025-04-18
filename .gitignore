@@ -1,3 +1,4 @@
-/.envrc
+.envrc
 /.vault_password
 /.vscode
+roles/pythons/files/.vpnbox-telegram-config.json
