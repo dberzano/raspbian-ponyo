@@ -1,4 +1,17 @@
 ---
+- name: Check if Ookla repository is already configured
+  raw: |
+    grep -iR ookla /etc/apt/
+  register: grep_ookla_result
+  failed_when: false
+  changed_when: false
+
+- name: Configure Ookla speedtest repository if needed
+  when: grep_ookla_result.rc != 0
+  raw: |
+    cd / &&
+    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | bash
+
 - name: Update list of packages
   apt: cache_valid_time=43200 update_cache=yes
 
@@ -23,6 +36,8 @@
       - dnsmasq
       # for having nslookup for testing
       - dnsutils
+      # from Ookla's repo
+      - speedtest
 
 - name: Check if darkstat is installed
   stat: path=/usr/local/sbin/darkstat
