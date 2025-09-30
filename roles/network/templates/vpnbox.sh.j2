@@ -66,24 +66,32 @@ function _ovpn_connect() {
 }
 
 function _ovpn_get_cc() {
-    # Wait until country code shows as the target one
-    echo -n "Waiting until target Country Code is ${TARGET_COUNTRY_CODE} (up to 60 s)..."
-    for ((I=0; I<30; I++)); do
-        RAW=$(curl -sfL --ipv4 --max-time 3 http://ip-api.com/json || true)
-        CC=$(echo "$RAW" | jq -r .countryCode || true)
-        if [[ $CC == $TARGET_COUNTRY_CODE ]]; then
-            EXTERNAL_IP=$(echo "$RAW" | jq -r .query)
-        echo  # newline
-        break
-        fi
-        echo -n .
-        sleep 2
+    # Wait until country code shows as the target one with retries
+    local RETRY_COUNT=0
+    local MAX_RETRIES=6
+
+    while [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
+        echo -n "Waiting until target Country Code is ${TARGET_COUNTRY_CODE} - attempt $((RETRY_COUNT + 1)) out of ${MAX_RETRIES}..."
+
+        for ((I=0; I<5; I++)); do
+            RAW=$(curl -sfL --ipv4 --max-time 3 http://ip-api.com/json || true)
+            CC=$(echo "$RAW" | jq -r .countryCode || true)
+            if [[ $CC == $TARGET_COUNTRY_CODE ]]; then
+                EXTERNAL_IP=$(echo "$RAW" | jq -r .query)
+                echo  # newline
+                return 0
+            fi
+            echo -n .
+            sleep 2
+        done
+
+        echo " (nope: $CC instead of $TARGET_COUNTRY_CODE)"
+        RETRY_COUNT=$((RETRY_COUNT + 1))
     done
-    if [[ $CC != $TARGET_COUNTRY_CODE ]]; then
-        echo "Could not get to target Country Code $TARGET_COUNTRY_CODE in 60 s, aborting (we have: $CC)"
-        echo "You can use to debug: screen -rd $SCREEN_NAME"
-        exit 1
-    fi
+
+    echo "Could not get to target Country Code $TARGET_COUNTRY_CODE after $MAX_RETRIES attempts, aborting (we have: $CC)"
+    echo "You can use to debug: screen -rd $SCREEN_NAME"
+    exit 1
 }
 
 function _ovpn_darkstat_kill {
