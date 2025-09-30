@@ -15,6 +15,13 @@
 - name: Update list of packages
   apt: cache_valid_time=43200 update_cache=yes
 
+- name: Remove unneeded packages
+  apt:
+    state: absent
+    name:
+      # this one can occasionally make startup/shutdown very slow
+      - unattended-upgrades
+
 - name: Install base packages
   apt:
     state: present
