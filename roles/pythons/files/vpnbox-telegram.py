@@ -5,13 +5,14 @@ import logging
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import yaml
 from flag import FlagError, flag_safe
 from pydantic import BaseModel, ConfigDict, Secret, model_validator
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyParameters, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -36,6 +37,7 @@ class BotConfig(BaseModel):
     netplan_config_src: str = "routerino.yaml_all_networks"
 
     wifi_iface: str = "wlan0"
+    bssid_nicknames: dict[str, str] = {}
 
     model_config = ConfigDict(extra="forbid")
 
@@ -209,12 +211,32 @@ def _flavour_to_flag(flavour: str) -> str:
         return f"{flavour_flag} ({flavour})"
 
 
-async def _get_wifi_name() -> Optional[str]:
-    """Get the name of the connected wifi, or None if not connected."""
+@dataclass
+class WifiInfo:
+    """WiFi connection information."""
+    essid: str
+    bssid: str  # lowercase with colons
+    signal_dbm: int
+    link_quality_current: int
+    link_quality_max: int
+    frequency_ghz: float
+    bit_rate: float
+    bit_rate_unit: str  # Kb/s, Mb/s, or Gb/s
+
+    @property
+    def link_quality_percent(self) -> int:
+        """Calculate link quality as a percentage."""
+        if self.link_quality_max == 0:
+            return 0
+        return int((self.link_quality_current / self.link_quality_max) * 100)
+
+
+async def _get_wifi_info() -> Optional[WifiInfo]:
+    """Get detailed WiFi connection information using iwconfig."""
     try:
         aprocess = await asyncio.create_subprocess_exec(
-            "iwgetid",
-            "--raw",
+            "iwconfig",
+            CONF.wifi_iface,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -222,7 +244,60 @@ async def _get_wifi_name() -> Optional[str]:
         return None
 
     stdout, _ = await aprocess.communicate()
-    return stdout.decode("utf-8").strip()
+    output = stdout.decode("utf-8")
+
+    # Check if not connected
+    if "ESSID:off/any" in output or 'ESSID:""' in output:
+        return None
+
+    # Parse ESSID (handles escaped quotes in network name)
+    essid_match = re.search(r'ESSID:"((?:[^"\\]|\\.)+)"', output)
+    if not essid_match:
+        return None
+    essid = essid_match.group(1)
+
+    # Parse BSSID (Access Point)
+    bssid_match = re.search(r'Access Point: ([0-9A-Fa-f:]+)', output)
+    if not bssid_match:
+        return None
+    bssid = bssid_match.group(1).lower()
+
+    # Parse Signal level
+    signal_match = re.search(r'Signal level=(-?\d+) dBm', output)
+    if not signal_match:
+        return None
+    signal_dbm = int(signal_match.group(1))
+
+    # Parse Link Quality
+    quality_match = re.search(r'Link Quality=(\d+)/(\d+)', output)
+    if not quality_match:
+        return None
+    link_quality_current = int(quality_match.group(1))
+    link_quality_max = int(quality_match.group(2))
+
+    # Parse Frequency
+    freq_match = re.search(r'Frequency:(\d+\.\d+) GHz', output)
+    if not freq_match:
+        return None
+    frequency_ghz = float(freq_match.group(1))
+
+    # Parse Bit Rate (flexible: accepts any unit ending with /s)
+    bitrate_match = re.search(r'Bit Rate[=:]([\d.]+) (\S+/s)', output)
+    if not bitrate_match:
+        return None
+    bit_rate = float(bitrate_match.group(1))
+    bit_rate_unit = bitrate_match.group(2)
+
+    return WifiInfo(
+        essid=essid,
+        bssid=bssid,
+        signal_dbm=signal_dbm,
+        link_quality_current=link_quality_current,
+        link_quality_max=link_quality_max,
+        frequency_ghz=frequency_ghz,
+        bit_rate=bit_rate,
+        bit_rate_unit=bit_rate_unit,
+    )
 
 
 async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
@@ -248,10 +323,28 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Run iwgetid to get the SSID of the connected wifi
-    wifi_ssid = await _get_wifi_name()
-    if wifi_ssid is not None:
-        msg = f"Connected to wifi network *{telegram_escape(wifi_ssid)}*\\. Pick a VPN variant:"
+    # Get WiFi connection information
+    wifi_info = await _get_wifi_info()
+    if wifi_info is not None:
+        # Format the WiFi info message
+        signal_bar = _format_signal_bar(wifi_info.link_quality_percent)
+        # Escape bit rate (decimal point and unit need escaping)
+        bit_rate_str = telegram_escape(f"{wifi_info.bit_rate} {wifi_info.bit_rate_unit}")
+        
+        # Build nickname line if BSSID is mapped
+        nickname = CONF.bssid_nicknames.get(wifi_info.bssid.lower())
+        nickname_line = f"✨ {telegram_escape(nickname)}\n" if nickname else ""
+        
+        # Build complete message
+        msg = (
+            f"Connected to WiFi network:\n\n"
+            f"🛜 {telegram_escape(wifi_info.essid)}\n"
+            f"{nickname_line}"
+            f"⚙️ `{telegram_escape(wifi_info.bssid)}`\n"
+            f"💪 {signal_bar} {wifi_info.link_quality_percent}\%\n"
+            f"🐌 {bit_rate_str}\n\n"
+            f"Pick a VPN variant:"
+        )
     else:
         msg = "Not connected to a wifi network\\. Pick a VPN variant:"
     return msg, reply_markup
@@ -272,6 +365,18 @@ def telegram_escape(s: str) -> str:
     for c in "\\*_[]()~>#+-=|{}.!`":  # note that the backslash must be the first one
         out = out.replace(c, f"\\{c}")
     return out
+
+
+def _format_signal_bar(percent: int) -> str:
+    """Format signal strength as a bar (0-100% -> ▱▱▱▱▱ to ▰▰▰▰▰)."""
+    # Clamp to 0-100
+    percent = max(0, min(100, percent))
+    
+    # Calculate filled bars (5 total bars)
+    filled = int(percent / 20)
+    empty = 5 - filled
+    
+    return "▰" * filled + "▱" * empty
 
 
 async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -299,7 +404,7 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     await query.edit_message_text(
-        text=f"⏳ You have selected: *{telegram_escape(_flavour_to_flag(query.data))}*, please wait",
+        text=f"⏳ You have selected *{telegram_escape(_flavour_to_flag(query.data))}* \\- please wait",
         parse_mode=ParseMode.MARKDOWN_V2,
     )
 
@@ -357,7 +462,7 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     await query.message.reply_text(
         text=f"{emoji} Returned `{aprocess.returncode}` \\- output:\n\n```\n{escaped_out}```",
         parse_mode=ParseMode.MARKDOWN_V2,
-        reply_to_message_id=query.message.message_id,
+        reply_parameters=ReplyParameters(message_id=query.message.message_id),
     )
 
 
