@@ -303,9 +303,11 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode=ParseMode.MARKDOWN_V2,
     )
 
+    is_vpn_operation = False
     if query.data == "disconnect":
         LOGGER.debug(f"user {query.from_user} has requested disconnection from all VPNs")
         cmd = [f"vpnbox-{CONF.vpn_flavours[0]}", "--disconnect"]
+        is_vpn_operation = True
     elif query.data == "ssh_from_anywhere":
         LOGGER.debug(f"user {query.from_user} has requested remote SSH access")
         cmd = [
@@ -321,6 +323,7 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         LOGGER.debug(f"user {query.from_user} has requested connection to VPN flavor {query.data}")
         cmd = [f"vpnbox-{query.data}", "--connect"]
+        is_vpn_operation = True
 
     try:
         aprocess = await asyncio.create_subprocess_exec(
@@ -340,10 +343,21 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     escaped_out = telegram_escape(stdout.decode("utf-8"))
     emoji = "✅" if aprocess.returncode == 0 else "❌"
 
-    LOGGER.debug(f"cmd {' '.join(cmd)} finished with exitcode {aprocess.returncode} - updating msg")
-    await query.edit_message_text(
-        text=f"{emoji} Exitcode `{aprocess.returncode}` \\- output:\n\n```\n{escaped_out}```",
+    # Reconnect immediately if VPN operation succeeded
+    if is_vpn_operation and aprocess.returncode == 0:
+        LOGGER.info("reconnecting to Telegram after successful VPN operation")
+        try:
+            await context.application.updater.stop()
+            await context.application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            LOGGER.info("successfully reconnected to Telegram")
+        except Exception as e:
+            LOGGER.error(f"failed to reconnect to Telegram: {e.__class__.__name__}: {str(e)}")
+
+    LOGGER.debug(f"cmd {' '.join(cmd)} finished with exitcode {aprocess.returncode} - sending reply")
+    await query.message.reply_text(
+        text=f"{emoji} Returned `{aprocess.returncode}` \\- output:\n\n```\n{escaped_out}```",
         parse_mode=ParseMode.MARKDOWN_V2,
+        reply_to_message_id=query.message.message_id,
     )
 
 
