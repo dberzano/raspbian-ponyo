@@ -330,6 +330,8 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
         signal_bar = _format_signal_bar(wifi_info.link_quality_percent)
         # Escape bit rate (decimal point and unit need escaping)
         bit_rate_str = telegram_escape(f"{wifi_info.bit_rate} {wifi_info.bit_rate_unit}")
+        # Escape frequency (decimal point needs escaping)
+        freq_str = telegram_escape(f"{wifi_info.frequency_ghz} GHz")
         
         # Build nickname line if BSSID is mapped
         nickname = CONF.bssid_nicknames.get(wifi_info.bssid.lower())
@@ -341,6 +343,7 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
             f"🛜 {telegram_escape(wifi_info.essid)}\n"
             f"{nickname_line}"
             f"⚙️ `{telegram_escape(wifi_info.bssid)}`\n"
+            f"🌊 {freq_str}\n"
             f"💪 {signal_bar} {wifi_info.link_quality_percent}\%\n"
             f"🐌 {bit_rate_str}\n\n"
             f"Pick a VPN variant:"
