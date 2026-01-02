@@ -12,7 +12,13 @@ from typing import Any, Iterable, Optional
 import yaml
 from flag import FlagError, flag_safe
 from pydantic import BaseModel, ConfigDict, Secret, model_validator
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyParameters, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    ReplyParameters,
+    Update,
+)
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
@@ -48,7 +54,8 @@ class BotConfig(BaseModel):
         vpn_flavours = data.get("vpn_flavours", [])
         if not vpn_flavours:
             vpn_flavours = sorted(
-                x.name.rsplit("-", 1)[1] for x in Path("/usr/local/sbin").glob("vpnbox-*")
+                x.name.rsplit("-", 1)[1]
+                for x in Path("/usr/local/sbin").glob("vpnbox-*")
             )
             data["vpn_flavours"] = vpn_flavours
         return data
@@ -69,7 +76,6 @@ CONF: Optional[BotConfig] = None
 
 
 class FilterAuthorizedChatId(filters.BaseFilter):
-
     def __init__(self, authorized_ids: Iterable[int]) -> None:
         """Construct the custom filter."""
         super().__init__("filter_authorized_chat_id", data_filter=False)
@@ -83,7 +89,9 @@ def _init_logger() -> None:
     """Initialize logger for all."""
     global LOGGER
 
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 
     LOGGER = logging.getLogger("svizzerino")
     LOGGER.setLevel(logging.DEBUG)
@@ -162,7 +170,13 @@ def _init_netplan() -> None:
     # Bind mount the writable directory to the original one
     LOGGER.debug(f"bind-mounting {CONF.netplan_writable_dir} to {CONF.netplan_dir}")
     subprocess.run(
-        ["mount", "-o", "bind", CONF.netplan_writable_dir.as_posix(), CONF.netplan_dir.as_posix()],
+        [
+            "mount",
+            "-o",
+            "bind",
+            CONF.netplan_writable_dir.as_posix(),
+            CONF.netplan_dir.as_posix(),
+        ],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -214,6 +228,7 @@ def _flavour_to_flag(flavour: str) -> str:
 @dataclass
 class WifiInfo:
     """WiFi connection information."""
+
     essid: str
     bssid: str  # lowercase with colons
     signal_dbm: int
@@ -257,32 +272,32 @@ async def _get_wifi_info() -> Optional[WifiInfo]:
     essid = essid_match.group(1)
 
     # Parse BSSID (Access Point)
-    bssid_match = re.search(r'Access Point: ([0-9A-Fa-f:]+)', output)
+    bssid_match = re.search(r"Access Point: ([0-9A-Fa-f:]+)", output)
     if not bssid_match:
         return None
     bssid = bssid_match.group(1).lower()
 
     # Parse Signal level
-    signal_match = re.search(r'Signal level=(-?\d+) dBm', output)
+    signal_match = re.search(r"Signal level=(-?\d+) dBm", output)
     if not signal_match:
         return None
     signal_dbm = int(signal_match.group(1))
 
     # Parse Link Quality
-    quality_match = re.search(r'Link Quality=(\d+)/(\d+)', output)
+    quality_match = re.search(r"Link Quality=(\d+)/(\d+)", output)
     if not quality_match:
         return None
     link_quality_current = int(quality_match.group(1))
     link_quality_max = int(quality_match.group(2))
 
     # Parse Frequency
-    freq_match = re.search(r'Frequency:(\d+\.\d+) GHz', output)
+    freq_match = re.search(r"Frequency:(\d+\.\d+) GHz", output)
     if not freq_match:
         return None
     frequency_ghz = float(freq_match.group(1))
 
     # Parse Bit Rate (flexible: accepts any unit ending with /s)
-    bitrate_match = re.search(r'Bit Rate[=:]([\d.]+) (\S+/s)', output)
+    bitrate_match = re.search(r"Bit Rate[=:]([\d.]+) (\S+/s)", output)
     if not bitrate_match:
         return None
     bit_rate = float(bitrate_match.group(1))
@@ -319,7 +334,9 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
 
     # Present a list of known WiFi networks to connect to as buttons
     for net in await get_list_of_known_wifi_networks():
-        keyboard.append([InlineKeyboardButton(f"🛜 {net}", callback_data=f"wifi:{net}")])
+        keyboard.append(
+            [InlineKeyboardButton(f"🛜 {net}", callback_data=f"wifi:{net}")]
+        )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -329,14 +346,16 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
         # Format the WiFi info message
         signal_bar = _format_signal_bar(wifi_info.link_quality_percent)
         # Escape bit rate (decimal point and unit need escaping)
-        bit_rate_str = telegram_escape(f"{wifi_info.bit_rate} {wifi_info.bit_rate_unit}")
+        bit_rate_str = telegram_escape(
+            f"{wifi_info.bit_rate} {wifi_info.bit_rate_unit}"
+        )
         # Escape frequency (decimal point needs escaping)
         freq_str = telegram_escape(f"{wifi_info.frequency_ghz} GHz")
-        
+
         # Build nickname line if BSSID is mapped
         nickname = CONF.bssid_nicknames.get(wifi_info.bssid.lower())
         nickname_line = f"✨ {telegram_escape(nickname)}\n" if nickname else ""
-        
+
         # Build complete message
         msg = (
             f"Connected to WiFi network:\n\n"
@@ -374,15 +393,49 @@ def _format_signal_bar(percent: int) -> str:
     """Format signal strength as a bar (0-100% -> ▱▱▱▱▱ to ▰▰▰▰▰)."""
     # Clamp to 0-100
     percent = max(0, min(100, percent))
-    
+
     # Calculate filled bars (5 total bars)
     filled = int(percent / 20)
     empty = 5 - filled
-    
+
     return "▰" * filled + "▱" * empty
 
 
-async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _reconnect_telegram(
+    context: ContextTypes.DEFAULT_TYPE, redisplay_start: bool
+) -> None:
+    """Reconnect to Telegram after network change.
+
+    Args:
+        context: Telegram context
+        redisplay_start: If True, display the start menu after reconnection
+    """
+    LOGGER.info("reconnecting to Telegram after network change")
+    try:
+        await context.application.updater.stop()
+        await context.application.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES
+        )
+        LOGGER.info("successfully reconnected to Telegram")
+
+        if redisplay_start:
+            job = context.job
+            text, markup = await _prepare_vpn_menu()
+            await context.bot.send_message(
+                job.chat_id,
+                text=text,
+                reply_markup=markup,
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
+    except Exception as e:
+        LOGGER.error(
+            f"failed to reconnect to Telegram: {e.__class__.__name__}: {str(e)}"
+        )
+
+
+async def handle_reply_to_start(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Parses the CallbackQuery and updates the message text - this connects to the VPNs."""
     query = update.callback_query
     LOGGER.info(
@@ -400,10 +453,10 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("wifi:"):
         connect_to = query.data.split(":", 1)[1]
         await query.edit_message_text(
-            text=f"🛜 Requested connection to WiFi: *{telegram_escape(connect_to)}*",
+            text=f"🛜 Requested connection to WiFi: *{telegram_escape(connect_to)}*, you will be notified if successful",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
-        await connect_to_wifi_network(connect_to)
+        await connect_to_wifi_network(connect_to, context, query.message.chat_id)
         return
 
     await query.edit_message_text(
@@ -413,7 +466,9 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
 
     is_vpn_operation = False
     if query.data == "disconnect":
-        LOGGER.debug(f"user {query.from_user} has requested disconnection from all VPNs")
+        LOGGER.debug(
+            f"user {query.from_user} has requested disconnection from all VPNs"
+        )
         cmd = [f"vpnbox-{CONF.vpn_flavours[0]}", "--disconnect"]
         is_vpn_operation = True
     elif query.data == "ssh_from_anywhere":
@@ -429,7 +484,9 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
             ),
         ]
     else:
-        LOGGER.debug(f"user {query.from_user} has requested connection to VPN flavor {query.data}")
+        LOGGER.debug(
+            f"user {query.from_user} has requested connection to VPN flavor {query.data}"
+        )
         cmd = [f"vpnbox-{query.data}", "--connect"]
         is_vpn_operation = True
 
@@ -453,15 +510,11 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Reconnect immediately if VPN operation succeeded
     if is_vpn_operation and aprocess.returncode == 0:
-        LOGGER.info("reconnecting to Telegram after successful VPN operation")
-        try:
-            await context.application.updater.stop()
-            await context.application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-            LOGGER.info("successfully reconnected to Telegram")
-        except Exception as e:
-            LOGGER.error(f"failed to reconnect to Telegram: {e.__class__.__name__}: {str(e)}")
+        await _reconnect_telegram(context, redisplay_start=False)
 
-    LOGGER.debug(f"cmd {' '.join(cmd)} finished with exitcode {aprocess.returncode} - sending reply")
+    LOGGER.debug(
+        f"cmd {' '.join(cmd)} finished with exitcode {aprocess.returncode} - sending reply"
+    )
     await query.message.reply_text(
         text=f"{emoji} Returned `{aprocess.returncode}` \\- output:\n\n```\n{escaped_out}```",
         parse_mode=ParseMode.MARKDOWN_V2,
@@ -469,7 +522,9 @@ async def handle_reply_to_start(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
-async def handle_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_unauthorized(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle all unauthorized users."""
     LOGGER.warning(f"a message came from an unauthorized party - ignoring: {update}")
     await update.message.reply_text("you are not authorized to interact with this bot")
@@ -477,11 +532,15 @@ async def handle_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle all unauthorized users."""
-    LOGGER.warning(f"user {update.effective_chat.id} is authorized but wrote something unhandled")
+    LOGGER.warning(
+        f"user {update.effective_chat.id} is authorized but wrote something unhandled"
+    )
     await update.message.reply_text("I do not understand")
 
 
-async def connect_to_wifi_network(wifi_network: str) -> None:
+async def connect_to_wifi_network(
+    wifi_network: str, context: ContextTypes.DEFAULT_TYPE, chat_id: int
+) -> None:
     """Change the netplan configuration so that it contains a single wifi network."""
     # Open netplan configuration
     netplan_config_read = CONF.netplan_writable_dir / CONF.netplan_config_src
@@ -493,7 +552,9 @@ async def connect_to_wifi_network(wifi_network: str) -> None:
             data = yaml.safe_load(f)
         data["network"]["wifis"][CONF.wifi_iface]["access-points"] = {
             name: content
-            for name, content in data["network"]["wifis"][CONF.wifi_iface]["access-points"].items()
+            for name, content in data["network"]["wifis"][CONF.wifi_iface][
+                "access-points"
+            ].items()
             if name == wifi_network
         }
 
@@ -514,8 +575,18 @@ async def connect_to_wifi_network(wifi_network: str) -> None:
 
         LOGGER.info(f"applied netplan configuration for WiFi network {wifi_network}")
 
+        # Schedule reconnection with menu display after 10 seconds
+        LOGGER.info("scheduling Telegram reconnection and menu display in 10 seconds")
+        context.job_queue.run_once(
+            lambda ctx: _reconnect_telegram(ctx, redisplay_start=True),
+            when=10,
+            chat_id=chat_id,
+        )
+
     except Exception as e:
-        LOGGER.error(f"unable to connect to WiFi network - {e.__class__.__name__}: {str(e)}")
+        LOGGER.error(
+            f"unable to connect to WiFi network - {e.__class__.__name__}: {str(e)}"
+        )
         return
 
 
@@ -535,7 +606,9 @@ async def get_list_of_known_wifi_networks() -> set[str]:
         essids = set(re.findall(r'ESSID:"(.*?)"', output))
         # return essids
     except Exception as e:
-        LOGGER.error(f"unable to get the list of WiFi networks - {e.__class__.__name__}: {str(e)}")
+        LOGGER.error(
+            f"unable to get the list of WiFi networks - {e.__class__.__name__}: {str(e)}"
+        )
         return set()
 
     # Open the netplan file and return a list of known ESSIDs
@@ -560,8 +633,12 @@ def main():
 
     LOGGER.info("initializing Telegram bot")
     application_builder = Application.builder()
-    application = application_builder.token(CONF.telegram_api_key.get_secret_value()).build()
-    authorized = FilterAuthorizedChatId(CONF.authorized_chat_ids)  # only authorized IDs can chat
+    application = application_builder.token(
+        CONF.telegram_api_key.get_secret_value()
+    ).build()
+    authorized = FilterAuthorizedChatId(
+        CONF.authorized_chat_ids
+    )  # only authorized IDs can chat
 
     # Add a handler for the /start command
     application.add_handler(
