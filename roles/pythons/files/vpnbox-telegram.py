@@ -15,7 +15,6 @@ from pydantic import BaseModel, ConfigDict, Secret, model_validator
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
     ReplyParameters,
     Update,
 )
@@ -54,7 +53,7 @@ class BotConfig(BaseModel):
         vpn_flavours = data.get("vpn_flavours", [])
         if not vpn_flavours:
             vpn_flavours = sorted(
-                x.name.rsplit("-", 1)[1]
+                x.name.removeprefix("vpnbox-")
                 for x in Path("/usr/local/sbin").glob("vpnbox-*")
             )
             data["vpn_flavours"] = vpn_flavours
@@ -208,21 +207,27 @@ def _print_initial_message(application: Application, when: int = 0):
 
 
 def _flavour_to_flag(flavour: str) -> str:
-    """Convert flavour to the corresponding Unicode flag if possible."""
+    """Convert flavour to the corresponding Unicode flag if possible.
+
+    For WireGuard flavours (wg-XX), the country code is extracted from after
+    the ``wg-`` prefix. Since the protocol is already clear from the menu
+    context, only the flag is returned (no ``(wg)`` suffix).
+    """
     flavour = flavour.lower()
     if flavour in ("disconnect", "ssh_from_anywhere"):
         return flavour
+
+    # WireGuard flavours are prefixed with "wg-": extract the country code
+    country_code = flavour[3:] if flavour.startswith("wg-") else flavour
+
     try:
-        flavour_flag = flag_safe(flavour[0:2])
+        country_flag = flag_safe(country_code[0:2])
     except FlagError:
-        # Cannot convert to flag: return it as is, but uppercased
         return f"{flavour} (cannot find flag)"
-    if len(flavour) == 2:
-        # Name is fully constituted by the country code: return flag
-        return flavour_flag
+    if len(country_code) == 2:
+        return country_flag
     else:
-        # Name contains country code and something else: return flag and description
-        return f"{flavour_flag} ({flavour})"
+        return f"{country_flag} ({flavour})"
 
 
 @dataclass
@@ -315,22 +320,34 @@ async def _get_wifi_info() -> Optional[WifiInfo]:
     )
 
 
-async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
-    """Prepare the VPN menu with the buttons."""
-    # Standard buttons for picking a VPN flavour and disconnecting
-    row1 = [
-        InlineKeyboardButton(_flavour_to_flag(flavour), callback_data=flavour)
-        for flavour in CONF.vpn_flavours
-    ]
-    row2 = [
-        InlineKeyboardButton("❌ Disconnect", callback_data="disconnect"),
-        InlineKeyboardButton("🚫 Cancel", callback_data="cancel"),
-    ]
-    row3 = [
-        # Add a row for remote SSH access via tmate, with proper terminal emoji
-        InlineKeyboardButton("🔒 SSH from anywhere", callback_data="ssh_from_anywhere"),
-    ]
-    keyboard = [row1, row2, row3]
+async def _prepare_vpn_menu() -> tuple[str, InlineKeyboardMarkup]:
+    """Prepare the top-level VPN menu (level 1): pick a protocol."""
+    keyboard = []
+
+    # Protocol picker row: always show both, even if one has 0 countries
+    keyboard.append(
+        [
+            InlineKeyboardButton("OpenVPN", callback_data="protocol:openvpn"),
+            InlineKeyboardButton("WireGuard", callback_data="protocol:wireguard"),
+        ]
+    )
+
+    # Disconnect / Cancel row
+    keyboard.append(
+        [
+            InlineKeyboardButton("❌ Disconnect", callback_data="disconnect"),
+            InlineKeyboardButton("🚫 Cancel", callback_data="cancel"),
+        ]
+    )
+
+    # SSH row
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "🔒 SSH from anywhere", callback_data="ssh_from_anywhere"
+            ),
+        ]
+    )
 
     # Present a list of known WiFi networks to connect to as buttons
     for net in await get_list_of_known_wifi_networks():
@@ -365,10 +382,48 @@ async def _prepare_vpn_menu() -> tuple[str, ReplyKeyboardMarkup]:
             f"🌊 {freq_str}\n"
             f"💪 {signal_bar} {wifi_info.link_quality_percent}\%\n"
             f"🐌 {bit_rate_str}\n\n"
-            f"Pick a VPN variant:"
+            f"Pick a VPN protocol:"
         )
     else:
-        msg = "Not connected to a wifi network\\. Pick a VPN variant:"
+        msg = "Not connected to a wifi network\\. Pick a VPN protocol:"
+    return msg, reply_markup
+
+
+def _prepare_country_menu(protocol: str) -> tuple[str, InlineKeyboardMarkup]:
+    """Prepare the country picker menu (level 2) for a given protocol.
+
+    Args:
+        protocol: Either ``"openvpn"`` or ``"wireguard"``.
+    """
+    if protocol == "wireguard":
+        flavours = [f for f in CONF.vpn_flavours if f.startswith("wg-")]
+        label = "WireGuard"
+    else:
+        flavours = [f for f in CONF.vpn_flavours if not f.startswith("wg-")]
+        label = "OpenVPN"
+
+    keyboard = []
+
+    if flavours:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    _flavour_to_flag(flavour), callback_data=f"connect:{flavour}"
+                )
+                for flavour in flavours
+            ]
+        )
+
+    # Back button
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="back")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if flavours:
+        msg = f"Pick a country \\({telegram_escape(label)}\\):"
+    else:
+        msg = f"No countries configured for {telegram_escape(label)}\\."
+
     return msg, reply_markup
 
 
@@ -459,8 +514,32 @@ async def handle_reply_to_start(
         await connect_to_wifi_network(connect_to, context, query.message.chat_id)
         return
 
+    # Level 1 → Level 2: user picked a protocol, show country picker
+    if query.data.startswith("protocol:"):
+        protocol = query.data.split(":", 1)[1]
+        LOGGER.debug(f"user {query.from_user} picked protocol {protocol}")
+        text, markup = _prepare_country_menu(protocol)
+        await query.edit_message_text(
+            text=text,
+            reply_markup=markup,
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
+
+    # Level 2 → Level 1: user pressed Back
+    if query.data == "back":
+        LOGGER.debug(f"user {query.from_user} pressed Back, showing top-level menu")
+        text, markup = await _prepare_vpn_menu()
+        await query.edit_message_text(
+            text=text,
+            reply_markup=markup,
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
+
+    # From here on, all actions run an external command — show a "please wait" message
     await query.edit_message_text(
-        text=f"⏳ You have selected *{telegram_escape(_flavour_to_flag(query.data))}* \\- please wait",
+        text=f"⏳ You have selected *{telegram_escape(_flavour_to_flag(query.data.removeprefix('connect:')))}* \\- please wait",
         parse_mode=ParseMode.MARKDOWN_V2,
     )
 
@@ -469,9 +548,49 @@ async def handle_reply_to_start(
         LOGGER.debug(
             f"user {query.from_user} has requested disconnection from all VPNs"
         )
-        cmd = [f"vpnbox-{CONF.vpn_flavours[0]}", "--disconnect"]
-        is_vpn_operation = True
-    elif query.data == "ssh_from_anywhere":
+
+        # Build disconnect commands: one for OpenVPN and one for WireGuard (if available)
+        ovpn_flavours = [f for f in CONF.vpn_flavours if not f.startswith("wg-")]
+        wg_flavours = [f for f in CONF.vpn_flavours if f.startswith("wg-")]
+        disconnect_cmds = []
+        if ovpn_flavours:
+            disconnect_cmds.append([f"vpnbox-{ovpn_flavours[0]}", "--disconnect"])
+        if wg_flavours:
+            disconnect_cmds.append([f"vpnbox-{wg_flavours[0]}", "--disconnect"])
+
+        all_output = []
+        overall_ok = True
+        for cmd in disconnect_cmds:
+            LOGGER.debug(f"running disconnect command: {' '.join(cmd)}")
+            try:
+                aprocess = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+            except FileNotFoundError:
+                all_output.append(f"[{cmd[0]}] executable not found")
+                overall_ok = False
+                continue
+            stdout, _ = await aprocess.communicate()
+            all_output.append(stdout.decode("utf-8"))
+            if aprocess.returncode != 0:
+                overall_ok = False
+
+        escaped_out = telegram_escape("\n".join(all_output))
+        emoji = "✅" if overall_ok else "❌"
+
+        if overall_ok:
+            await _reconnect_telegram(context, redisplay_start=False)
+
+        await query.message.reply_text(
+            text=f"{emoji} Disconnect \\- output:\n\n```\n{escaped_out}```",
+            parse_mode=ParseMode.MARKDOWN_V2,
+            reply_parameters=ReplyParameters(message_id=query.message.message_id),
+        )
+        return
+
+    if query.data == "ssh_from_anywhere":
         LOGGER.debug(f"user {query.from_user} has requested remote SSH access")
         cmd = [
             "bash",
@@ -483,12 +602,20 @@ async def handle_reply_to_start(
                 "tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'"
             ),
         ]
-    else:
+    elif query.data.startswith("connect:"):
+        flavour = query.data.split(":", 1)[1]
         LOGGER.debug(
-            f"user {query.from_user} has requested connection to VPN flavor {query.data}"
+            f"user {query.from_user} has requested connection to VPN flavor {flavour}"
         )
-        cmd = [f"vpnbox-{query.data}", "--connect"]
+        cmd = [f"vpnbox-{flavour}", "--connect"]
         is_vpn_operation = True
+    else:
+        LOGGER.warning(f"unhandled callback data: {query.data}")
+        await query.edit_message_text(
+            text="❌ Unknown action",
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
 
     try:
         aprocess = await asyncio.create_subprocess_exec(
