@@ -67,4 +67,11 @@
     mode: "0700"
   loop: "{{ vpn | dict2items }}"
 
+- name: Add vpnbox-wg script
+  template:
+    src: vpnbox-wireguard.sh.j2
+    dest: /usr/local/sbin/vpnbox-wg-{{item.key}}
+    mode: "0700"
+  loop: "{{ vpn_wg | dict2items }}"
+
 - meta: flush_handlers

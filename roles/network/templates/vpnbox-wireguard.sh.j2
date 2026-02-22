@@ -1,0 +1,244 @@
+#!/bin/bash -e
+
+# Configure this computer as a VPN Box based on Proton VPN (WireGuard).
+
+# This configuration has been automatically generated for country: {{item.key}}
+
+# On Ubuntu 22.04, it requires the following packages:
+#     wireguard jq speedometer
+# Some extra packages (not from Ubuntu) are required as well:
+#     speedtest
+
+if [[ $(whoami) != root ]]; then
+    echo "Rerun me as root"
+    exit 1
+fi
+
+WG_IFACE=wg0
+IFACE_EXT="$WG_IFACE"
+WG_CONFIG_FILE=/etc/wireguard/${WG_IFACE}.conf
+WG_DARKSTAT_PIDFILE=/var/run/darkstat.pid
+TARGET_COUNTRY_CODE={{item.key|upper}}
+
+function _wg_disconnect() {
+    if ! ip link show "$WG_IFACE" &> /dev/null; then
+        echo "No current WireGuard interface $WG_IFACE to tear down"
+        return 0
+    fi
+    echo "Tearing down WireGuard interface $WG_IFACE..."
+    wg-quick down "$WG_IFACE" &> /dev/null || true
+}
+
+function _wg_extract_config() {
+    # Extract configuration to a file (split the string below or else it will grep itself)
+    cat "$0" | grep -A 999 '# === CONFIGU''RATION === #' > "$WG_CONFIG_FILE"
+    chmod 600 "$WG_CONFIG_FILE"
+}
+
+function _wg_connect() {
+    echo "Connecting with WireGuard..."
+    wg-quick up "$WG_IFACE"
+}
+
+function _wg_get_cc() {
+    # Wait until country code shows as the target one with retries
+    local RETRY_COUNT=0
+    local MAX_RETRIES=6
+
+    while [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
+        echo -n "Waiting until target Country Code is ${TARGET_COUNTRY_CODE} - attempt $((RETRY_COUNT + 1)) out of ${MAX_RETRIES}..."
+
+        for ((I=0; I<5; I++)); do
+            RAW=$(curl -sfL --ipv4 --max-time 3 http://ip-api.com/json || true)
+            CC=$(echo "$RAW" | jq -r .countryCode || true)
+            if [[ $CC == $TARGET_COUNTRY_CODE ]]; then
+                EXTERNAL_IP=$(echo "$RAW" | jq -r .query)
+                echo  # newline
+                return 0
+            fi
+            echo -n .
+            sleep 2
+        done
+
+        echo " (nope: $CC instead of $TARGET_COUNTRY_CODE)"
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+    done
+
+    echo "Could not get to target Country Code $TARGET_COUNTRY_CODE after $MAX_RETRIES attempts, aborting (we have: $CC)"
+    echo "You can use to debug: wg show"
+    exit 1
+}
+
+function _wg_darkstat_kill {
+    echo "Terminating current Darkstat instances..."
+    local DARKPID
+    DARKPID=$(cat $WG_DARKSTAT_PIDFILE 2> /dev/null || true)
+    kill -15 "$DARKPID" &> /dev/null || true
+    sleep 1
+    kill -9 "$DARKPID" &> /dev/null || true
+}
+
+function _wg_darkstat() {
+    _wg_darkstat_kill
+    echo "Starting Darkstat..."
+    rm -f "$WG_DARKSTAT_PIDFILE"
+    darkstat -i $IFACE_EXT --pidfile "$WG_DARKSTAT_PIDFILE" -p 80
+    echo "You can connect to Darkstat using port 80 via http"
+}
+
+function _wg_system_config() {
+    echo "Applying kernel settings..."
+
+    # Enable IPv4 forwarding in the kernel
+    sysctl net.ipv4.ip_forward=1 &> /dev/null
+
+    # Flush filter and nat tables
+    iptables -X
+    iptables -F
+    iptables -t nat -X
+    iptables -t nat -F
+
+    # Add forward rules
+    iptables -I INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -I FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+    # Add NAT rule
+    iptables -t nat -A POSTROUTING -o "$IFACE_EXT" -j MASQUERADE
+}
+
+function _wg_info() {
+    # Print some information before jumping to speedometer
+    echo
+    echo "Connected successfully as $EXTERNAL_IP in country $CC! Full information in JSON:"
+    echo
+    echo "$RAW" | jq .
+    echo
+    echo "WireGuard status:"
+    wg show
+    echo
+}
+
+function _wg_speedometer() {
+    # Start Speedometer to see real time traffic speed info (rx/tx)
+    speedometer -t "$IFACE_EXT" -r "$IFACE_EXT"
+}
+
+function _wg_speedtest() {
+    # Start Ookla's speedtest
+    speedtest
+}
+
+function _wg_dhcp() {
+    # Print real time DHCP server information
+    journalctl -f -u isc-dhcp-server || true
+}
+
+function _wg_full_connect_sequence() {
+    # Full connect sequence
+    _wg_disconnect
+    _wg_extract_config
+    _wg_connect
+    _wg_get_cc
+    _wg_darkstat
+    _wg_system_config
+    _wg_info
+}
+
+function _wg_full_disconnect_sequence() {
+    # Full disconnect sequence
+    _wg_darkstat_kill
+    _wg_disconnect
+}
+
+function _wg_menu() {
+    # Entry point
+    cat <<EoF
+What do you want to do?
+
+1. Connect to the VPN
+2. Disconnect
+3. Connection info
+4. Speedometer
+5. Speedtest
+6  Darkstat
+7. DHCP Server info
+
+8. Reboot!
+9. Power off!
+
+0. Exit
+
+EoF
+    read -p '> ' ANS
+    case "$ANS" in
+      1)
+          # Connect to the VPN
+          _wg_full_connect_sequence
+      ;;
+
+      2)
+          # Disconnect from the VPN
+          _wg_disconnect
+      ;;
+
+      3)
+          _wg_get_cc
+          _wg_info
+      ;;
+
+      4)
+          _wg_speedometer
+      ;;
+
+      5)
+          _wg_speedtest
+      ;;
+
+      6)
+          _wg_darkstat
+      ;;
+
+      7)
+          _wg_dhcp
+      ;;
+
+      8)
+          _wg_disconnect
+          reboot
+      ;;
+
+      9)
+          _wg_disconnect
+          poweroff
+      ;;
+
+      0)
+          exit 0
+      ;;
+
+      *)
+          echo "Incorrect choice"
+      ;;
+    esac
+}
+
+if [[ $1 == '--connect' ]]; then
+    # Non-interactive mode: connect and exit
+    _wg_full_connect_sequence
+    exit $?
+elif [[ $1 == '--disconnect' ]]; then
+    # Non-interactive mode: disconnect and exit
+    _wg_full_disconnect_sequence
+    exit $?
+fi
+
+while [[ 1 ]]; do
+    # Interactive mode
+    _wg_menu
+done
+
+exit 0
+
+# === CONFIGURATION === #
+
+{{ item.value.wg_conf }}
