@@ -27,6 +27,7 @@
     state: present
     name:
       - openvpn
+      - wireguard
       - isc-dhcp-server
       - iptables
       - speedometer
