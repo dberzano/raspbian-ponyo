@@ -16,7 +16,7 @@ fi
 
 WG_IFACE=wg0
 IFACE_EXT="$WG_IFACE"
-WG_CONFIG_FILE=/etc/wireguard/${WG_IFACE}.conf
+WG_CONFIG_FILE=/tmp/${WG_IFACE}.conf
 WG_DARKSTAT_PIDFILE=/var/run/darkstat.pid
 TARGET_COUNTRY_CODE={{item.key|upper}}
 
@@ -26,7 +26,7 @@ function _wg_disconnect() {
         return 0
     fi
     echo "Tearing down WireGuard interface $WG_IFACE..."
-    wg-quick down "$WG_IFACE" &> /dev/null || true
+    wg-quick down "$WG_CONFIG_FILE" &> /dev/null || true
 }
 
 function _wg_extract_config() {
@@ -37,7 +37,7 @@ function _wg_extract_config() {
 
 function _wg_connect() {
     echo "Connecting with WireGuard..."
-    wg-quick up "$WG_IFACE"
+    wg-quick up "$WG_CONFIG_FILE"
 }
 
 function _wg_get_cc() {
