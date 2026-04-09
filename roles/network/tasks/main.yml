@@ -5,7 +5,7 @@
 - name: Remove systemd DNS stub listener
   lineinfile:
     path: /etc/systemd/resolved.conf
-    line: 'DNSStubListener=no'
+    line: "DNSStubListener=no"
   notify:
     - Restart systemd-resolved
 
@@ -49,6 +49,19 @@
 
 - name: Create DHCP server override directory
   file: path=/etc/systemd/system/isc-dhcp-server.service.d state=directory mode=0755
+
+- name: Create systemd-networkd override directory
+  file: path=/etc/systemd/networkd.conf.d state=directory mode=0755
+
+- name: Tell systemd-networkd to not remove foreign routing policy rules
+  copy:
+    content: |
+      [Network]
+      ManageForeignRoutingPolicyRules=no
+    dest: /etc/systemd/networkd.conf.d/keep-foreign-rules.conf
+    mode: "0644"
+  notify:
+    - Restart systemd-networkd
 
 - name: Add DHCP server configuration
   template: src=dhcpd.conf.j2 dest=/etc/dhcp/dhcpd.conf mode=0644

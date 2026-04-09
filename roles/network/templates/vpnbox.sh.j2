@@ -166,10 +166,24 @@ function _ovpn_full_connect_sequence() {
     _ovpn_info
 }
 
+function _cleanup_networking() {
+    echo "Cleaning up networking rules..."
+
+    # Reset iptables to permissive defaults
+    iptables -P FORWARD ACCEPT
+    iptables -F
+    iptables -X
+    iptables -t nat -F
+    iptables -t nat -X
+    iptables -t mangle -F
+    iptables -t mangle -X
+}
+
 function _ovpn_full_disconnect_sequence() {
     # Full disconnect sequence
     _ovpn_darkstat_kill
     _ovpn_disconnect
+    _cleanup_networking
 }
 
 function _ovpn_menu() {

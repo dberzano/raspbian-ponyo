@@ -16,8 +16,10 @@ fi
 
 WG_IFACE=wg0
 IFACE_EXT="$WG_IFACE"
+IFACE_LAN={{ network.ethernet.device }}
 WG_CONFIG_FILE=/tmp/${WG_IFACE}.conf
 WG_DARKSTAT_PIDFILE=/var/run/darkstat.pid
+WG_ROUTE_TABLE=100
 TARGET_COUNTRY_CODE={{item.key|upper}}
 
 function _wg_disconnect() {
@@ -33,6 +35,8 @@ function _wg_extract_config() {
     # Extract configuration to a file (split the string below or else it will grep itself)
     cat "$0" | grep -A 999 '# === CONFIGU''RATION === #' > "$WG_CONFIG_FILE"
     chmod 600 "$WG_CONFIG_FILE"
+    # Disable wg-quick's fwmark-based policy routing (it breaks on eth0 cable reconnection)
+    sed -i '/^\[Interface\]/a Table = off' "$WG_CONFIG_FILE"
 }
 
 function _wg_connect() {
@@ -49,7 +53,7 @@ function _wg_get_cc() {
         echo -n "Waiting until target Country Code is ${TARGET_COUNTRY_CODE} - attempt $((RETRY_COUNT + 1)) out of ${MAX_RETRIES}..."
 
         for ((I=0; I<5; I++)); do
-            RAW=$(curl -sfL --ipv4 --max-time 3 http://ip-api.com/json || true)
+            RAW=$(curl -sfL --ipv4 --interface "$WG_IFACE" --max-time 3 http://ip-api.com/json || true)
             CC=$(echo "$RAW" | jq -r .countryCode || true)
             if [[ $CC == $TARGET_COUNTRY_CODE ]]; then
                 EXTERNAL_IP=$(echo "$RAW" | jq -r .query)
@@ -92,18 +96,37 @@ function _wg_system_config() {
     # Enable IPv4 forwarding in the kernel
     sysctl net.ipv4.ip_forward=1 &> /dev/null
 
-    # Flush filter and nat tables
+    # Flush filter, nat and mangle tables
     iptables -X
     iptables -F
     iptables -t nat -X
     iptables -t nat -F
+    iptables -t mangle -F
+    iptables -t mangle -X
 
-    # Add forward rules
+    # Kill switch: default FORWARD policy is DROP
+    # When wg0 is down, devices on the LAN interface cannot reach the internet
+    iptables -P FORWARD DROP
+
+    # Only allow forwarding from LAN interface to WireGuard tunnel (and return traffic)
+    iptables -A FORWARD -i "$IFACE_LAN" -o "$IFACE_EXT" -j ACCEPT
+    iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+    # Allow traffic to/from the Pi itself
     iptables -I INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
-    iptables -I FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-    # Add NAT rule
+    # NAT outgoing traffic through the WireGuard tunnel
     iptables -t nat -A POSTROUTING -o "$IFACE_EXT" -j MASQUERADE
+
+    # Mark packets arriving on the LAN interface for policy routing
+    iptables -t mangle -A PREROUTING -i "$IFACE_LAN" -j MARK --set-mark "$WG_ROUTE_TABLE"
+
+    # Policy routing: marked packets (from LAN) go through the VPN.
+    # Using fwmark instead of iif because the kernel auto-removes iif rules
+    # when the interface goes down (e.g. cable unplug), but fwmark rules survive
+    ip route replace default dev "$WG_IFACE" table "$WG_ROUTE_TABLE"
+    ip rule show | grep -q "fwmark 0x$(printf '%x' "$WG_ROUTE_TABLE") lookup $WG_ROUTE_TABLE" || \
+        ip rule add fwmark "$WG_ROUTE_TABLE" table "$WG_ROUTE_TABLE" priority "$WG_ROUTE_TABLE"
 }
 
 function _wg_info() {
@@ -138,16 +161,36 @@ function _wg_full_connect_sequence() {
     _wg_disconnect
     _wg_extract_config
     _wg_connect
+    _wg_system_config
     _wg_get_cc
     _wg_darkstat
-    _wg_system_config
     _wg_info
+}
+
+function _cleanup_networking() {
+    echo "Cleaning up networking rules..."
+
+    # Reset iptables to permissive defaults
+    iptables -P FORWARD ACCEPT
+    iptables -F
+    iptables -X
+    iptables -t nat -F
+    iptables -t nat -X
+    iptables -t mangle -F
+    iptables -t mangle -X
+
+    # Remove policy routing rules and custom table
+    while ip rule show | grep -q "lookup $WG_ROUTE_TABLE"; do
+        ip rule del table "$WG_ROUTE_TABLE" 2>/dev/null || break
+    done
+    ip route flush table "$WG_ROUTE_TABLE" 2>/dev/null || true
 }
 
 function _wg_full_disconnect_sequence() {
     # Full disconnect sequence
     _wg_darkstat_kill
     _wg_disconnect
+    _cleanup_networking
 }
 
 function _wg_menu() {
