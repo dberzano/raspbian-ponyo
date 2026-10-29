@@ -23,7 +23,7 @@ OVPN_CONFIG_FILE="${OVPN_CONFIG_PREFIX}"/protonvpn.ovpn
 OVPN_USER_PASS_FILE="${OVPN_CONFIG_PREFIX}"/user_pass.txt
 OVPN_PIDFILE=/var/run/openvpn_protonvpn.pid
 OVPN_DARKSTAT_PIDFILE=/var/run/darkstat.pid
-TARGET_COUNTRY_CODE={{item.key|upper}}
+TARGET_COUNTRY_CODE={{item.key.split('-')[0]|upper}}
 
 function _ovpn_disconnect() {
     local CURPID I

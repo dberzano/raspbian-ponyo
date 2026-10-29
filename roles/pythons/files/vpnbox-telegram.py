@@ -207,27 +207,23 @@ def _print_initial_message(application: Application, when: int = 0):
 
 
 def _flavour_to_flag(flavour: str) -> str:
-    """Convert flavour to the corresponding Unicode flag if possible.
-
-    For WireGuard flavours (wg-XX), the country code is extracted from after
-    the ``wg-`` prefix. Since the protocol is already clear from the menu
-    context, only the flag is returned (no ``(wg)`` suffix).
-    """
+    """Format a VPN flavour as a country flag plus any profile suffix."""
     flavour = flavour.lower()
+    if flavour.startswith("wg-"):
+        flavour = flavour.removeprefix("wg-")
+
     if flavour in ("disconnect", "ssh_from_anywhere"):
         return flavour
 
-    # WireGuard flavours are prefixed with "wg-": extract the country code
-    country_code = flavour[3:] if flavour.startswith("wg-") else flavour
+    match = re.fullmatch(r"(.{2})-?(.*)", flavour)
+    country_code, suffix = match.groups() if match else ("", "")
 
     try:
-        country_flag = flag_safe(country_code[0:2])
+        country_flag = flag_safe(country_code)
     except FlagError:
-        return f"{flavour} (cannot find flag)"
-    if len(country_code) == 2:
-        return country_flag
-    else:
-        return f"{country_flag} ({flavour})"
+        return f"❓ {flavour}"
+
+    return f"{country_flag} · {suffix}" if suffix else country_flag
 
 
 @dataclass

@@ -20,7 +20,7 @@ IFACE_LAN={{ network.ethernet.device }}
 WG_CONFIG_FILE=/tmp/${WG_IFACE}.conf
 WG_DARKSTAT_PIDFILE=/var/run/darkstat.pid
 WG_ROUTE_TABLE=100
-TARGET_COUNTRY_CODE={{item.key|upper}}
+TARGET_COUNTRY_CODE={{item.key.split('-')[0]|upper}}
 
 function _wg_disconnect() {
     if ! ip link show "$WG_IFACE" &> /dev/null; then
@@ -35,8 +35,16 @@ function _wg_extract_config() {
     # Extract configuration to a file (split the string below or else it will grep itself)
     cat "$0" | grep -A 999 '# === CONFIGU''RATION === #' > "$WG_CONFIG_FILE"
     chmod 600 "$WG_CONFIG_FILE"
-    # Disable wg-quick's fwmark-based policy routing (it breaks on eth0 cable reconnection)
-    sed -i '/^\[Interface\]/a Table = off' "$WG_CONFIG_FILE"
+
+    # Disable DNS changes and IPv6; this box uses IPv4 for its WireGuard tunnel.
+    sed -i '/^[[:space:]]*DNS[[:space:]]*=/d' "$WG_CONFIG_FILE"
+    sed -i -E '/^[[:space:]]*(Address|AllowedIPs)[[:space:]]*=/ s/, *[[:xdigit:]:]+\/[0-9]+//g' "$WG_CONFIG_FILE"
+    sed -i '/^[[:space:]]*#[[:space:]]*Endpoint[[:space:]]*=[[:space:]]*\[/d' "$WG_CONFIG_FILE"
+
+    # Disable wg-quick's fwmark-based policy routing (it breaks on eth0 cable reconnection).
+    if ! grep -q '^Table[[:space:]]*=[[:space:]]*off$' "$WG_CONFIG_FILE"; then
+        sed -i '/^\[Interface\]/a Table = off' "$WG_CONFIG_FILE"
+    fi
 }
 
 function _wg_connect() {

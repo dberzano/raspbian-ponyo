@@ -73,12 +73,36 @@
   notify:
     - Restart DHCP server
 
+- name: Determine expected VPN box script names
+  set_fact:
+    expected_vpnbox_script_names: >-
+      {{
+        (vpn | dict2items | map(attribute='key') | map('regex_replace', '^', 'vpnbox-') | list)
+        + (vpn_wg | dict2items | map(attribute='key') | map('regex_replace', '^', 'vpnbox-wg-') | list)
+      }}
+
+- name: Find existing VPN box scripts
+  find:
+    paths: /usr/local/sbin
+    patterns: vpnbox-*
+    file_type: file
+  register: existing_vpnbox_scripts
+
+- name: Remove stale VPN box scripts
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ existing_vpnbox_scripts.files }}"
+  when: (item.path | basename) not in expected_vpnbox_script_names
+  register: removed_vpnbox_scripts
+
 - name: Add vpnbox script
   template:
     src: vpnbox.sh.j2
     dest: /usr/local/sbin/vpnbox-{{item.key}}
     mode: "0700"
   loop: "{{ vpn | dict2items }}"
+  register: openvpn_scripts
 
 - name: Add vpnbox-wg script
   template:
@@ -86,5 +110,12 @@
     dest: /usr/local/sbin/vpnbox-wg-{{item.key}}
     mode: "0700"
   loop: "{{ vpn_wg | dict2items }}"
+  register: wireguard_scripts
+
+- name: Refresh Telegram menu after VPN box scripts change
+  systemd:
+    name: vpnbox-telegram
+    state: restarted
+  when: openvpn_scripts.changed or wireguard_scripts.changed or removed_vpnbox_scripts.changed
 
 - meta: flush_handlers
